@@ -264,6 +264,7 @@ Measured across isolated child server processes (`autocannon`, 50 concurrent con
 
 ## Architecture & Documentation
 
+- **Documentation website** — run locally with `npm run dev --workspace=@better-back/docs-site`
 - [Phase 0 — Grounded Pain Map & Framework Comparative Study](./docs/PAIN_MAP.md)
 - [Phase 1 — Architecture & Design Document](./docs/DESIGN.md)
 - [Migration Guides (Raw Express, NestJS, Fastify)](./docs/MIGRATION.md)
