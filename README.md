@@ -289,11 +289,13 @@ Measured across isolated child server processes (`autocannon`, 50 concurrent con
 ## Architecture & Documentation
 
 - **Documentation website** — run locally with `npm run dev --workspace=@better-back/docs-site`
+- [Start-to-Finish MVP Guideline](./docs/MVP_GUIDELINE.md)
+- [CLI & Scaffolding Reference](./docs/CLI.md)
 - [Phase 0 — Grounded Pain Map & Framework Comparative Study](./docs/PAIN_MAP.md)
 - [Phase 1 — Architecture & Design Document](./docs/DESIGN.md)
 - [Migration Guides (Raw Express, NestJS, Fastify)](./docs/MIGRATION.md)
 - [Final Verification Report](./docs/FINAL_REPORT.md)
-- [Architecture Decision Records (`docs/adr/001`–`010`)](./docs/adr/)
+- [Architecture Decision Records (`docs/adr/001`–`011`)](./docs/adr/)
 
 ## License
 
