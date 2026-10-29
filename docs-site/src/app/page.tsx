@@ -94,8 +94,7 @@ export default function Home() {
           <div className="code-content">
             <div>
               <span className="line-no">1</span>
-              <span className="code-purple">import</span>{' '}
-              {'{ Controller, Post, type Ctx }'}{' '}
+              <span className="code-purple">import</span> {'{ Controller, Post, type Ctx }'}{' '}
               <span className="code-purple">from</span>{' '}
               <span className="code-green">'better-back'</span>;
             </div>

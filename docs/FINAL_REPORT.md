@@ -17,7 +17,8 @@
 | **Composable & Type-Safe `@Guard` Pipeline** | Variadic `@Guard(BearerAuthGuard, requireScope('users:write'))` chains deterministically (`options.guard -> @Controller @Guard -> method @Guard`), passes upstream `ctx.user` to downstream role/permission guards, enforces compile-time compatibility with handler `Ctx<{ user }>`, and bypasses cleanly on `@Public()`. |
 | **Import-Safe, Fail-Fast `defineConfig`** | `export const AppConfig = defineConfig(ProdSchema)` is safe to import in unit tests when `process.env` omits required production variables, while validating eagerly on `.values`, `.from(env)`, and inside `BetterBack.create()` before startup completes, with automatic `[REDACTED]` secret masking. |
 | **Reverse-Proxy & Rate-Limit Safety** | `trustProxy` in `BetterBackOptions` + route-scoped default rate-limit keys (`${METHOD}:${fullPath}:${ip}`) preventing cross-endpoint rate-limit collisions. |
-| **OpenAPI 3.1 `$ref` Components & Domain Errors** | Zod v4 `.meta({ id: 'User' })` schemas hoist `$defs` into `#/components/schemas/User` (`$ref`) across params, bodies, responses, and `/docs` interactive "Try It Out", plus `RouteOptions.errors` (`400 | 401 | 403 | 404 | 408 | 409 | 413 | 422 | 429 | 503`). |
+| **OpenAPI 3.1 `$ref` Components & Domain Errors** | Zod v4 `.meta({ id: 'User' })` schemas hoist `$defs` into `#/components/schemas/User` (`$ref`) across params, bodies, responses, and `/docs` interactive "Try It Out" + Component Schemas Explorer, plus `RouteOptions.errors` (`400 | 401 | 403 | 404 | 408 | 409 | 413 | 422 | 429 | 503`). |
+| **Built-In Zero-Extra-Dep CLI (`better-back` / `bb` & `create-better-back`)** | Separate `dist/cli.js` + `dist/bin.js` entry built strictly on Node 20+ built-ins (`node:util` `parseArgs`, `node:fs/promises`) — adding **0 bytes** to `dist/index.js` and **0 extra runtime dependencies** — supporting `new` (`--minimal`), `generate`/`g` (`resource`, `module`, `controller`, `service`, `guard` + deterministic `@Module` source wiring), `routes`, `openapi`, `doctor`, and `dev`. |
 | **Symmetrical Reference App & WAL Persistence** | `examples/user-api` models clean `AuthModule`, `UsersModule` (`UserRepositoryToken`: `InMemoryUserRepository` or durable crash-safe `WalUserRepository`), and `PostsModule` (`PostRepositoryToken`: `InMemoryPostRepository`) with zero core DB coupling. |
 
 ---
@@ -35,8 +36,8 @@
 | 7 | **Explicit over magical** | Explicit `@Module({ imports, controllers, providers, exports })` graph; zero filesystem scanning or auto-discovery. |
 | 8 | **Fail fast, fail loudly at startup** | Startup validation catches bad config, circular module/provider dependencies, duplicate routes, missing/unexported providers, and wildcard+credentials CORS before `listen()`. |
 | 9 | **Secure by default (OWASP API Top 10)** | 7 security headers, deny-by-default CORS, `trustProxy`, route-isolated rate limits, `100kb` JSON limit, prototype-pollution key stripping, `30s` timeouts, secret redaction, and stack-free RFC 7807 `ProblemDetails`. |
-| 10 | **Standalone Dual ESM/CJS npm package (`better-back`)** | Verified via `tsup` (`dist/index.js` `111.68 KB`, `dist/index.cjs` `113.72 KB`, `dist/index.d.ts` `46.18 KB`), `packaging.test.ts`, and `npm pack --dry-run`. |
-| 11 | **100% Real Verification** | `7/7` test suites (`36/36` tests, **`93.98%` line coverage**, **`95.28%` function coverage**) and real multi-process `autocannon` benchmarks. |
+| 10 | **Standalone Dual ESM/CJS npm package (`better-back` + `create-better-back`)** | Verified via `tsup` (`dist/index.js` `115.94 KB`, `dist/index.cjs` `117.98 KB`, `dist/cli.js` `66.45 KB`, `dist/bin.js` `163 B`, `dist/index.d.ts` `47.63 KB`), `packaging.test.ts`, `cli.test.ts`, and `npm pack --dry-run`. |
+| 11 | **100% Real Verification** | `8/8` test suites (`45/45` tests, **`91.89%` line coverage**, **`95.15%` function coverage**) including real `tsc --noEmit` + `vitest run` + HTTP CRUD verification of CLI-scaffolded projects and multi-process `autocannon` benchmarks (`-4.36%` Engine Core delta vs Raw Express 5). |
 
 ---
 

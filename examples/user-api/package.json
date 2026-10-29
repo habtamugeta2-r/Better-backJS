@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node ../../packages/core/dist/bin.js build",
     "start": "node dist/main.js",
     "dev": "tsx src/main.ts",
+    "routes": "node ../../packages/core/dist/bin.js routes src/app.module.ts",
+    "graph": "node ../../packages/core/dist/bin.js graph src/app.module.ts",
+    "openapi": "node ../../packages/core/dist/bin.js openapi src/app.module.ts --out openapi.json",
+    "doctor": "node ../../packages/core/dist/bin.js doctor --verify-app",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

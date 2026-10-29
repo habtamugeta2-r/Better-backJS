@@ -454,8 +454,9 @@ export class Container implements Resolver {
     stackSet: Set<RegisteredBinding>,
     isStartupValidation: boolean,
   ): unknown {
-    if (this.overrides.has(binding.token)) {
-      return this.overrides.get(binding.token);
+    const tokenKey = toTokenKey(binding.token);
+    if (this.overrides.has(tokenKey)) {
+      return this.overrides.get(tokenKey);
     }
 
     if (stackSet.has(binding)) {

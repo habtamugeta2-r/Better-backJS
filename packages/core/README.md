@@ -14,7 +14,29 @@
 
 ## 5-Minute Quick-Start
 
-### 1. Install
+### Option A — Scaffold with the CLI (`create-better-back` / `bb`)
+
+```bash
+npm create better-back@latest my-api
+cd my-api
+npm install
+npm run dev
+```
+
+Generate a complete 4-layer CRUD resource (Zod v4 schemas + repository port + domain service + controller + `@Module` auto-wiring + Supertest suite) or inspect routes & OpenAPI 3.1 specs anytime:
+
+```bash
+npx bb g resource orders           # Scaffolds src/modules/orders/* + wires OrdersModule into AppModule
+npx bb g repository audit-logs     # Scaffolds vendor-agnostic port + InMemory adapter
+npx bb g guard api-key             # Scaffolds src/common/api-key.guard.ts
+npx bb routes                      # Prints registered routes, guards & status codes directly from .ts or .js
+npx bb graph                       # Prints the explicit @Module dependency, controller & provider tree
+npx bb openapi --out openapi.json  # Exports OpenAPI 3.1.0 JSON (or --check openapi.json in CI)
+npx bb build --openapi             # Compiles TS, verifies DI/route startup graph & emits dist/openapi.json
+npx bb doctor --verify-app         # Verifies Node >= 20, strict tsconfig, Stage-3 decorators & live DI graph
+```
+
+### Option B — Manual Install
 
 ```bash
 npm install better-back express zod pino

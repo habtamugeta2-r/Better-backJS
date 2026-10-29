@@ -1,6 +1,6 @@
 # Better Back — Phase 0: Deep Research & Pain Map (`PAIN_MAP.md`)
 
-- **Status**: Phase 0 Complete (Approved to proceed with Hybrid API + Zod v4 + Express 5 + Hand-rolled DI + Pino + Dual ESM/CJS)
+- **Status**: Phase 0 Complete (Approved to proceed with Unified Stage-3 Decorators + `inject(Token)` + Zod v4 + Express 5 + Pino + Dual ESM/CJS)
 - **Author Role**: Principal Backend Architect / Senior TypeScript & Node.js Engineer / Framework Researcher
 - **Research Date**: 2026-10-29 (`Africa/Addis_Ababa`)
 - **Runtime Baseline Verified**: Node.js `v20.20.2` LTS, npm `10.8.2`, `express@5.3.0`, `zod@4.6.7`, `pino@10.4.0`, `fastify@5.12.7`, `@nestjs/core@12.3.2`, `typescript@5.9.3`
@@ -146,7 +146,7 @@ Every claim below is tagged:
 
 | ID | Pain Category | Primary Evidence | Sev (1–5) | Freq (1–5) | Score | Who Suffers | Root Cause | Today's Workaround | Better Back Opportunity |
 |---|---|---|---:|---:|---:|---|---|---|---|
-| **P1** | **Boilerplate per CRUD resource** | NestJS requires module + controller + service + create-dto + update-dto + entity + swagger decorators [3][5] | 4 | 5 | **20** | Every feature engineer | Split DTO/type/doc artifacts + ceremony | CLI codegen (`nest g resource`) generating 6–8 files | **ADAPT**: `<= 3 files`, `<= 40` framework lines via Hybrid schema-driven routes |
+| **P1** | **Boilerplate per CRUD resource** | NestJS requires module + controller + service + create-dto + update-dto + entity + swagger decorators [3][5] | 4 | 5 | **20** | Every feature engineer | Split DTO/type/doc artifacts + ceremony | CLI codegen (`nest g resource`) generating 6–8 files | **ADAPT**: Unified Stage-3 decorators + 1-line `inject()` + Zod v4 single-source-of-truth schemas + `bb g resource` |
 | **P2** | **Type-safety holes (`any` leaks)** | Express `req.body` is `any`; `req.query` unvalidated; NestJS `@Param('id')` typos compile cleanly [4] | 5 | 4 | **20** | All TS backend teams | HTTP untyped boundary disconnected from TS compiler | Manual `req.body as CreateUserDto` casts that lie at runtime | **ADOPT**: End-to-end inferred `body`/`query`/`params`/`headers` + template-literal route params |
 | **P3** | **Validation & OpenAPI 3x drift** | NestJS issues #15988, #10974, #15837 confirm TS type + `class-validator` + `@ApiProperty` drift [3][4][5] | 5 | 5 | **25** | Backend & API consumer teams | Reflection decorators cannot drive TS types | Third-party glue (`nestjs-zod`) or manual sync | **INVENT**: ONE Zod v4 schema -> runtime validation + `z.infer` + `z.toJSONSchema()` OpenAPI 3.1 [6] |
 | **P4** | **Async errors & inconsistent error shapes** | Express 4 dropped rejected Promises; Express 5 fixes forwarding [1][2] but still emits HTML/ad-hoc JSON | 4 | 4 | **16** | API clients, SREs | Legacy callback router + no standard error envelope | `express-async-errors` + custom error formatters | **ADOPT**: Express 5 native async forwarding + global RFC 9457/7807 `application/problem+json` filter [10] |

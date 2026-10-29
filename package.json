@@ -22,14 +22,15 @@
     "docs-site"
   ],
   "scripts": {
-    "build": "npm run build --workspace=better-back && npm run build --workspace=@better-back/example-user-api && npm run build --workspace=@better-back/docs-site",
-    "typecheck": "npm run build --workspace=better-back && tsc -p packages/core/tsconfig.json --noEmit && tsc -p examples/user-api/tsconfig.json --noEmit && tsc -p tsconfig.bench.json --noEmit && npm run typecheck --workspace=@better-back/docs-site",
+    "build": "npm run build --workspace=better-back && npm run build --workspace=create-better-back && npm run build --workspace=@better-back/example-user-api && npm run build --workspace=@better-back/docs-site",
+    "typecheck": "npm run build --workspace=better-back && tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/create-better-back/tsconfig.json --noEmit && tsc -p examples/user-api/tsconfig.json --noEmit && tsc -p tsconfig.bench.json --noEmit && npm run typecheck --workspace=@better-back/docs-site",
     "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"examples/*/src/**/*.ts\" \"examples/*/tests/**/*.ts\" \"benchmarks/**/*.ts\" \"docs-site/src/**/*.{ts,tsx}\"",
     "format": "prettier --write \"packages/**/*.{ts,json}\" \"examples/**/*.{ts,json}\" \"benchmarks/**/*.ts\" \"docs-site/src/**/*.{ts,tsx,css}\" docs-site/next.config.ts docs-site/package.json docs-site/tsconfig.json",
     "format:check": "prettier --check \"packages/**/*.{ts,json}\" \"examples/**/*.{ts,json}\" \"benchmarks/**/*.ts\" \"docs-site/src/**/*.{ts,tsx,css}\" docs-site/next.config.ts docs-site/package.json docs-site/tsconfig.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "verify": "npm run format:check && npm run build && npm run typecheck && npm run lint && npm run test:coverage && npm --workspace=better-back pack --dry-run",
+    "cli": "node packages/core/dist/bin.js",
+    "verify": "npm run format:check && npm run build && npm run typecheck && npm run lint && npm run test:coverage && npm --workspace=better-back pack --dry-run && npm --workspace=create-better-back pack --dry-run",
     "clean": "rm -rf packages/*/dist examples/*/dist docs-site/.next coverage *.tgz",
     "start:example": "node examples/user-api/dist/main.js",
     "bench": "tsx benchmarks/run.ts"

@@ -153,6 +153,7 @@ interface NormalizedModuleNode {
   readonly name: string;
   readonly metadata: ModuleMetadata;
   readonly importNames: readonly string[];
+  readonly isSyntheticControllerModule: boolean;
 }
 
 function isLoggerInstance(value: Logger | CreateLoggerOptions | undefined): value is Logger {
@@ -164,16 +165,25 @@ function isLoggerInstance(value: Logger | CreateLoggerOptions | undefined): valu
   );
 }
 
-function getModuleInfo(input: ConcreteConstructor): { name: string; metadata: ModuleMetadata } {
+function getModuleInfo(input: ConcreteConstructor): {
+  name: string;
+  metadata: ModuleMetadata;
+  isSyntheticControllerModule: boolean;
+} {
   const modMeta = extractModuleMetadata(input);
   if (modMeta) {
-    return { name: input.name || 'RootModule', metadata: modMeta };
+    return {
+      name: input.name || 'RootModule',
+      metadata: modMeta,
+      isSyntheticControllerModule: false,
+    };
   }
   const ctrlMeta = extractControllerMetadata(input);
   if (ctrlMeta) {
     return {
       name: `${input.name || 'Controller'}Module`,
       metadata: { controllers: [input] },
+      isSyntheticControllerModule: true,
     };
   }
   throw new BootstrapError(
@@ -184,6 +194,7 @@ function getModuleInfo(input: ConcreteConstructor): { name: string; metadata: Mo
 
 function flattenModuleGraph(root: ConcreteConstructor): readonly NormalizedModuleNode[] {
   const nodes = new Map<ConcreteConstructor, NormalizedModuleNode>();
+  const ownerByName = new Map<string, ConcreteConstructor>();
   const visiting = new Set<ConcreteConstructor>();
   const visitStack: string[] = [];
   const ordered: NormalizedModuleNode[] = [];
@@ -200,6 +211,15 @@ function flattenModuleGraph(root: ConcreteConstructor): readonly NormalizedModul
       return existing.name;
     }
 
+    const collidingCtor = ownerByName.get(info.name);
+    if (collidingCtor && collidingCtor !== current) {
+      throw new BootstrapError(
+        'DUPLICATE_MODULE_NAME_ERROR',
+        `Multiple distinct @Module classes share the name "${info.name}". Give each @Module class a unique identifier.`,
+      );
+    }
+    ownerByName.set(info.name, current);
+
     visiting.add(current);
     visitStack.push(info.name);
 
@@ -215,6 +235,7 @@ function flattenModuleGraph(root: ConcreteConstructor): readonly NormalizedModul
       name: info.name,
       metadata: info.metadata,
       importNames,
+      isSyntheticControllerModule: info.isSyntheticControllerModule,
     };
     nodes.set(current, node);
     ordered.push(node);
@@ -388,13 +409,15 @@ function extractModuleControllers(modules: readonly NormalizedModuleNode[]): {
         extras.push(ctrl);
       }
 
-      for (const cg of extracted.classGuards) {
-        registerClassGuardIfMissing(cg, declaredProviders, extras);
-      }
+      if (mod.isSyntheticControllerModule) {
+        for (const cg of extracted.classGuards) {
+          registerClassGuardIfMissing(cg, declaredProviders, extras);
+        }
 
-      for (const r of extracted.routes) {
-        for (const mg of r.guards) {
-          registerClassGuardIfMissing(mg, declaredProviders, extras);
+        for (const r of extracted.routes) {
+          for (const mg of r.guards) {
+            registerClassGuardIfMissing(mg, declaredProviders, extras);
+          }
         }
       }
 
@@ -547,13 +570,13 @@ function mountBundlesOntoRouter(options: {
               }
               return undefined;
             }
-          : (_req, res) => {
+          : (req, res) => {
               if (res.headersSent) return undefined;
 
               const rawResult = methodFn.call(singletonInst);
               if (isPromiseLike(rawResult)) {
                 return rawResult.then((resolved) => {
-                  if (res.headersSent) return;
+                  if (res.headersSent || getRequestMeta(req)?.timedOut) return;
                   if (defaultStatus === 204 || resolved === undefined) {
                     res.status(defaultStatus).end();
                   } else {
@@ -682,23 +705,47 @@ function mountBundlesOntoRouter(options: {
   return openApiRoutes;
 }
 
+export interface ToExpressRouterOptions<TConfig = Record<string, unknown>> {
+  /** Optional validated configuration produced by `defineConfig(...)`. */
+  readonly config?: LoadedConfig<TConfig>;
+  /** Optional pre-existing DI `Container` instance. */
+  readonly container?: Container;
+  /** Optional structured `Logger` instance. */
+  readonly logger?: Logger;
+  /** Optional URI prefix applied inside the returned `Router` (e.g. `"/v1"`). */
+  readonly apiPrefix?: string;
+  /** Optional global `AuthGuard` (or chain of guards) applied to all non-`@Public()` routes on this router. */
+  readonly guard?: AuthGuardInput<unknown, never> | readonly AuthGuardInput<unknown, never>[];
+  /** Optional `RateLimiterPort` implementation (defaults to bounded `InMemoryRateLimiter`). */
+  readonly rateLimiter?: RateLimiterPort;
+  /** Optional `CachePort` implementation (defaults to bounded `InMemoryCache`). */
+  readonly cache?: CachePort;
+  /** Optional test mock overrides (`[[Token, mock]]`). */
+  readonly overrides?: readonly (readonly [Token, unknown])[];
+  /** JSON body size limit when `parseBody` is enabled (default: `"100kb"`). */
+  readonly bodyLimit?: string;
+  /** Safely parse JSON bodies when `req.body` has not already been parsed by the host Express app (default: `true`). */
+  readonly parseBody?: boolean;
+  /** Mount RFC 7807 `ProblemDetails` error handling on the returned router (default: `true`). */
+  readonly handleErrors?: boolean;
+}
+
 /**
  * Converts a `@Module` or `@Controller` class into a standard Express 5 `Router` for
  * incremental adoption inside existing Express applications or zero-lock-in ejection.
  */
-export async function toExpressRouter(
+export async function toExpressRouter<TConfig = Record<string, unknown>>(
   moduleOrController: ConcreteConstructor,
-  options: {
-    readonly container?: Container;
-    readonly logger?: Logger;
-    readonly apiPrefix?: string;
-  } = {},
+  options: ToExpressRouterOptions<TConfig> = {},
 ): Promise<Router> {
+  const configValues = (options.config?.values ?? Object.freeze({})) as Readonly<TConfig>;
+  const secretKeys = options.config?.secretKeys ?? [];
   const flattened = flattenModuleGraph(moduleOrController);
   const container = options.container ?? new Container();
-  const logger = options.logger ?? createLogger();
-  const rateLimiter = new InMemoryRateLimiter();
-  const cache = new InMemoryCache();
+  const logger = options.logger ?? createLogger({ redactPaths: [...secretKeys] });
+  let rateLimiter: RateLimiterPort = options.rateLimiter ?? new InMemoryRateLimiter();
+  const cache: CachePort = options.cache ?? new InMemoryCache();
+  const globalGuards = normalizeGlobalGuards(options.guard);
 
   const { extraProvidersByModule, bundles } = extractModuleControllers(flattened);
 
@@ -710,6 +757,12 @@ export async function toExpressRouter(
     ];
     if (isRoot) {
       baseProviders.push({ provide: LoggerToken, useValue: logger });
+      if (options.config) {
+        baseProviders.push({ provide: options.config, useValue: configValues });
+      }
+      for (const gg of globalGuards) {
+        registerClassGuardIfMissing(gg, baseProviders, baseProviders);
+      }
       if (
         !baseProviders.some(
           (p) => typeof p === 'object' && 'provide' in p && p.provide === RateLimiterToken,
@@ -735,18 +788,45 @@ export async function toExpressRouter(
   });
 
   container.registerModules(registrations);
+  if (options.overrides) {
+    for (const [token, mockValue] of options.overrides) {
+      container.override(token, mockValue);
+    }
+  }
   await container.init();
+  rateLimiter = container.resolve(RateLimiterToken);
 
   const router = Router();
+  const bodyLimit = options.bodyLimit ?? '100kb';
+  if (options.parseBody ?? true) {
+    const safeParser = createSafeBodyParser(bodyLimit);
+    router.use((req, res, next) => {
+      if (
+        req.body !== undefined ||
+        req.method === 'GET' ||
+        req.method === 'HEAD' ||
+        req.method === 'OPTIONS'
+      ) {
+        next();
+        return;
+      }
+      safeParser(req, res, next);
+    });
+  }
+
   mountBundlesOntoRouter({
     target: router,
     bundles,
     container,
     logger,
     apiPrefix: options.apiPrefix,
-    globalGuards: [],
+    globalGuards,
     rateLimiter,
   });
+
+  if (options.handleErrors ?? true) {
+    router.use(createGlobalErrorFilter(logger, bodyLimit));
+  }
 
   return router;
 }

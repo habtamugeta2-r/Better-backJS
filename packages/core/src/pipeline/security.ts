@@ -101,6 +101,11 @@ export function createSecurityMiddleware(options: SecurityPipelineOptions = {}):
     if (typeof requestOrigin === 'string' && requestOrigin.length > 0) {
       res.vary('Origin');
 
+      const isPreflight =
+        req.method === 'OPTIONS' &&
+        typeof req.headers['access-control-request-method'] === 'string' &&
+        req.headers['access-control-request-method'].length > 0;
+
       const isAllowed = allowWildcard || (originSet !== null && originSet.has(requestOrigin));
       if (isAllowed) {
         res.setHeader('Access-Control-Allow-Origin', allowWildcard ? '*' : requestOrigin);
@@ -112,10 +117,12 @@ export function createSecurityMiddleware(options: SecurityPipelineOptions = {}):
           res.setHeader('Access-Control-Allow-Methods', methodsHeader);
           res.setHeader('Access-Control-Allow-Headers', allowedHeadersHeader);
           res.setHeader('Access-Control-Max-Age', maxAgeHeader);
-          res.status(204).end();
-          return;
+          if (isPreflight) {
+            res.status(204).end();
+            return;
+          }
         }
-      } else if (req.method === 'OPTIONS') {
+      } else if (isPreflight) {
         res.status(204).end();
         return;
       }

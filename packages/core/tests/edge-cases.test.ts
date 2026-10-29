@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Writable } from 'node:stream';
+import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -13,22 +14,29 @@ import {
   defineConfig,
   Delete,
   Get,
+  Guard,
   Head,
   inject,
   Injectable,
   InMemoryCache,
+  MissingProviderError,
   Module,
   normalizeRouteSignature,
+  NotFoundError,
   Options,
   paginate,
   Post,
   RateLimitExceededError,
   resolveForTest,
   resolveRoutePath,
+  toExpressRouter,
   TooManyRequestsError,
   toProblemDetails,
+  UnauthorizedError,
   UnprocessableEntityError,
+  type AuthGuard,
   type Ctx,
+  type GuardContext,
 } from 'better-back';
 
 describe('Production Edge Cases, SHA-256 Docs CSP, Versioning & Observability', () => {
@@ -340,5 +348,175 @@ describe('Production Edge Cases, SHA-256 Docs CSP, Versioning & Observability', 
 
     await app.listen(0, '::1');
     expect(app.getUrl()).toMatch(/^http:\/\/\[::1\]:\d+$/);
+  });
+
+  it('enforces @Module encapsulation + single-instance singletons on @Guard classes, preserves @Options under CORS, and powers full toExpressRouter() adoption', async () => {
+    let guardInstances = 0;
+
+    @Injectable()
+    class SharedTokenGuard implements AuthGuard<{ sub: string }> {
+      public constructor() {
+        guardInstances += 1;
+      }
+
+      public canActivate({ req }: GuardContext): { sub: string } {
+        if (req.headers.authorization !== 'Bearer ok') {
+          throw new UnauthorizedError('Bad token');
+        }
+        return { sub: 'u-1' };
+      }
+    }
+
+    // 1. Missing guard provider/import in an explicit @Module must fail fast with MissingProviderError!
+    @Controller('/unwired')
+    class UnwiredCtrl {
+      @Get('/')
+      @Guard(SharedTokenGuard)
+      public get() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [UnwiredCtrl] })
+    class BrokenModule {}
+
+    await expect(createTestingApp(BrokenModule)).rejects.toThrowError(MissingProviderError);
+
+    // 2. When exported from AuthMod and imported into two distinct modules, SharedTokenGuard is instantiated ONCE!
+    guardInstances = 0;
+
+    @Module({ providers: [SharedTokenGuard], exports: [SharedTokenGuard] })
+    class AuthMod {}
+
+    @Controller('/orders')
+    class OrdersCtrl {
+      @Get('/')
+      @Guard(SharedTokenGuard)
+      public list() {
+        return { resource: 'orders' };
+      }
+    }
+    @Module({ imports: [AuthMod], controllers: [OrdersCtrl] })
+    class OrdersMod {}
+
+    @Controller('/invoices')
+    class InvoicesCtrl {
+      @Get('/')
+      @Guard(SharedTokenGuard)
+      public list() {
+        return { resource: 'invoices' };
+      }
+    }
+    @Module({ imports: [AuthMod], controllers: [InvoicesCtrl] })
+    class InvoicesMod {}
+
+    @Module({ imports: [OrdersMod, InvoicesMod] })
+    class RootEncapsulatedMod {}
+
+    await using sharedGuardApp = await createTestingApp(RootEncapsulatedMod);
+    expect(guardInstances).toBe(1);
+
+    const ordersRes = await request(sharedGuardApp.express)
+      .get('/orders')
+      .set('Authorization', 'Bearer ok');
+    const invoicesRes = await request(sharedGuardApp.express)
+      .get('/invoices')
+      .set('Authorization', 'Bearer ok');
+    expect(ordersRes.status).toBe(200);
+    expect(invoicesRes.status).toBe(200);
+    expect(guardInstances).toBe(1);
+
+    // 3. Duplicate @Module class names across distinct constructors fail fast at boot
+    const makeDup = () => {
+      @Module({})
+      class DupMod {}
+      return DupMod;
+    };
+    const DupA = makeDup();
+    const DupB = makeDup();
+    @Module({ imports: [DupA, DupB] })
+    class CollidingRoot {}
+    await expect(createTestingApp(CollidingRoot)).rejects.toThrow(/share the name "DupMod"/);
+
+    // 4. @Options route executes even when CORS + Origin are active (unless Access-Control-Request-Method makes it a preflight)
+    @Controller('/caps')
+    class CapsCtrl {
+      @Options('/info')
+      public info({ res }: Ctx) {
+        res.setHeader('Allow', 'GET, POST, OPTIONS');
+        return { methods: ['GET', 'POST', 'OPTIONS'] };
+      }
+    }
+
+    await using corsOptsApp = await createTestingApp(CapsCtrl, {
+      security: { cors: { origins: ['https://portal.example.com'] } },
+    });
+
+    const directOptionsWithOrigin = await request(corsOptsApp.express)
+      .options('/caps/info')
+      .set('Origin', 'https://portal.example.com');
+    expect(directOptionsWithOrigin.status).toBe(200);
+    expect(directOptionsWithOrigin.headers['access-control-allow-origin']).toBe(
+      'https://portal.example.com',
+    );
+    expect(directOptionsWithOrigin.body).toEqual({ methods: ['GET', 'POST', 'OPTIONS'] });
+
+    const realPreflight = await request(corsOptsApp.express)
+      .options('/caps/info')
+      .set('Origin', 'https://portal.example.com')
+      .set('Access-Control-Request-Method', 'POST');
+    expect(realPreflight.status).toBe(204);
+
+    // 5. First-class toExpressRouter() inside a bare Express 5 app (safe JSON body parsing + config + guard + RFC 7807 errors)
+    const SubConfig = defineConfig(z.object({ PREFIX_TAG: z.string() }));
+    const CreateWidgetSchema = z.object({ title: z.string().min(2) });
+
+    @Controller('/widgets')
+    class WidgetsCtrl {
+      private readonly cfg = inject(SubConfig);
+
+      @Post('/', { body: CreateWidgetSchema })
+      public create({ body }: Ctx<typeof CreateWidgetSchema>) {
+        if (body.title === 'missing') {
+          throw new NotFoundError('Widget template missing');
+        }
+        return { label: `${this.cfg.PREFIX_TAG}:${body.title}` };
+      }
+    }
+
+    @Module({ controllers: [WidgetsCtrl] })
+    class WidgetsMod {}
+
+    const legacyExpress = express();
+    const router = await toExpressRouter(WidgetsMod, {
+      config: SubConfig.from({ PREFIX_TAG: 'v1' }),
+      logger: createLogger({ level: 'silent' }),
+      guard: ({ req }) => {
+        if (req.headers['x-api-key'] !== 'secret') {
+          throw new UnauthorizedError('Missing X-Api-Key');
+        }
+      },
+    });
+    legacyExpress.use('/embedded', router);
+
+    const unauthWidget = await request(legacyExpress)
+      .post('/embedded/widgets')
+      .send({ title: 'Gear' });
+    expect(unauthWidget.status).toBe(401);
+    expect(unauthWidget.headers['content-type']).toContain('application/problem+json');
+
+    const invalidWidget = await request(legacyExpress)
+      .post('/embedded/widgets')
+      .set('X-Api-Key', 'secret')
+      .send({ title: 'x' });
+    expect(invalidWidget.status).toBe(400);
+    expect(invalidWidget.body.code).toBe('VALIDATION_ERROR');
+
+    const okWidget = await request(legacyExpress)
+      .post('/embedded/widgets')
+      .set('X-Api-Key', 'secret')
+      .send({ title: 'Gear' });
+    expect(okWidget.status).toBe(201);
+    expect(okWidget.body).toEqual({ label: 'v1:Gear' });
   });
 });

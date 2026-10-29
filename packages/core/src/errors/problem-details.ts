@@ -60,7 +60,11 @@ export function toProblemDetails(
  * Terminal Express 5 catch-all handler for unmatched HTTP routes.
  */
 export function createNotFoundHandler(): RequestHandler {
-  return (req, _res, next) => {
+  return (req, res, next) => {
+    if (req.method === 'OPTIONS' && typeof req.headers.origin === 'string') {
+      res.status(204).end();
+      return;
+    }
     next(new NotFoundError(`No route matches ${req.method} ${req.path}.`));
   };
 }

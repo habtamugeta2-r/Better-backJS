@@ -1,0 +1,37 @@
+{
+  "name": "create-better-back",
+  "version": "1.0.0",
+  "description": "Scaffold a strict-TypeScript Better Back API project in one command (npm create better-back@latest)",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/habtamugeta2-r/Better-backJS.git",
+    "directory": "packages/create-better-back"
+  },
+  "homepage": "https://github.com/habtamugeta2-r/Better-backJS#readme",
+  "bugs": {
+    "url": "https://github.com/habtamugeta2-r/Better-backJS/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "create-better-back": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-back": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43"
+  }
+}

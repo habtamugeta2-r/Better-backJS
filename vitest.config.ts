@@ -29,9 +29,16 @@ export default defineConfig({
     },
   ],
   resolve: {
-    alias: {
-      'better-back': path.resolve(rootDir, 'packages/core/src/index.ts'),
-    },
+    alias: [
+      {
+        find: 'better-back/cli',
+        replacement: path.resolve(rootDir, 'packages/core/src/cli/index.ts'),
+      },
+      {
+        find: 'better-back',
+        replacement: path.resolve(rootDir, 'packages/core/src/index.ts'),
+      },
+    ],
   },
   test: {
     environment: 'node',
@@ -42,6 +49,7 @@ export default defineConfig({
       exclude: [
         'examples/user-api/src/main.ts',
         'packages/core/src/**/index.ts',
+        'packages/core/src/cli/bin.ts',
         'packages/core/src/routing/types.ts',
         '**/*.d.ts',
       ],

@@ -211,6 +211,38 @@ export const docs: DocPage[] = [
       },
     ],
   },
+  {
+    slug: 'cli',
+    title: 'CLI & scaffolding',
+    description:
+      'Scaffold projects, generate 4-layer resources, inspect module graphs, and export OpenAPI specs with zero runtime overhead.',
+    sections: [
+      {
+        title: 'Scaffold a project',
+        paragraphs: [
+          'Create a modular strict-TypeScript API or a single-file microservice in one command.',
+        ],
+        code: 'npm create better-back@latest my-api\ncd my-api\nnpm install\nnpm run dev',
+      },
+      {
+        title: 'Generate explicit vertical slices',
+        paragraphs: [
+          'Generate complete 4-layer CRUD resources (Zod schemas, repository port, domain service, controller, module, and Vitest + Supertest tests) with deterministic @Module wiring.',
+        ],
+        code: 'npx bb g resource orders\nnpx bb g repository audit-logs\nnpx bb g guard api-key',
+      },
+      {
+        title: 'Inspect routes, module graphs & OpenAPI contracts',
+        bullets: [
+          'npx bb routes prints every registered HTTP method, path, guard state, and status code without opening a TCP port.',
+          'npx bb graph prints the explicit @Module dependency, controller, provider, and export tree.',
+          'npx bb openapi --out openapi.json exports the OpenAPI 3.1.0 specification (or --check openapi.json in CI).',
+          'npx bb build --openapi compiles TypeScript and verifies the compiled DI/routing graph at build time.',
+          'npx bb doctor --verify-app audits Node LTS, strict tsconfig, Stage-3 decorators, .env hygiene, and DI startup.',
+        ],
+      },
+    ],
+  },
 ];
 
 export const docNavigation = [
@@ -221,6 +253,7 @@ export const docNavigation = [
   { label: 'Configuration', slug: 'configuration' },
   { label: 'Security & errors', slug: 'security-errors' },
   { label: 'Testing', slug: 'testing' },
+  { label: 'CLI & scaffolding', slug: 'cli' },
 ];
 
 export function getDoc(slug: string): DocPage | undefined {

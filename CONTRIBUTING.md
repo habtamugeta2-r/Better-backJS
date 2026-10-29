@@ -19,20 +19,22 @@ Every pull request must preserve the framework's core guarantees:
 ## Workspace Layout
 
 ```text
-packages/core/         # Publishable "better-back" npm package (Dual ESM + CJS + DTS)
+packages/core/               # Publishable "better-back" npm package (Dual ESM + CJS + DTS + CLI)
   src/
-    common/            # Shared Stage-3 Symbol.metadata helpers
-    config/            # Import-safe, fail-fast defineConfig + secret redaction
-    di/                # Container, inject(Token), @Injectable, tokens
-    errors/            # RFC 7807 ProblemDetails + AppError & startup error hierarchy
-    logging/           # Structured Pino JSON logger + redaction
-    openapi/           # OpenAPI 3.1.0 generator + SHA-256 CSP /docs explorer UI
-    pipeline/          # Correlation, OWASP security/CORS, timeout, body-parser, validation, health
-    ports/             # Vendor-agnostic CachePort/InMemoryCache & RateLimiterPort/InMemoryRateLimiter
-    routing/           # Stage-3 decorators, Ctx<...> types, pagination, URI versioning
-examples/user-api/     # Reference Users & Posts application (imports ONLY public "better-back" API)
-benchmarks/            # Isolated multi-process autocannon benchmark suite
-docs/                  # Pain map, architecture design, migration guides, and ADRs (001–010)
+    cli/                     # Zero-extra-dep CLI ("better-back" / "bb": new, generate/g, routes, openapi, doctor, dev)
+    common/                  # Shared Stage-3 Symbol.metadata helpers
+    config/                  # Import-safe, fail-fast defineConfig + secret redaction
+    di/                      # Container, inject(Token), @Injectable, tokens
+    errors/                  # RFC 7807 ProblemDetails + AppError & startup error hierarchy
+    logging/                 # Structured Pino JSON logger + redaction
+    openapi/                 # OpenAPI 3.1.0 generator + SHA-256 CSP /docs explorer UI
+    pipeline/                # Correlation, OWASP security/CORS, timeout, body-parser, validation, health
+    ports/                   # Vendor-agnostic CachePort/InMemoryCache & RateLimiterPort/InMemoryRateLimiter
+    routing/                 # Stage-3 decorators, Ctx<...> types, pagination, URI versioning
+packages/create-better-back/ # "npm create better-back@latest" project initializer
+examples/user-api/           # Reference Users & Posts application (imports ONLY public "better-back" API)
+benchmarks/                  # Isolated multi-process autocannon benchmark suite
+docs/                        # Pain map, architecture design, migration guides, and ADRs (001–010)
 ```
 
 ---

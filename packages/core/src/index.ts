@@ -14,6 +14,7 @@ export {
   toExpressRouter,
   type BetterBackApp,
   type BetterBackOptions,
+  type ToExpressRouterOptions,
   type TrustProxySetting,
 } from './application.js';
 
