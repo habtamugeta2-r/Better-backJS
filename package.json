@@ -1,0 +1,55 @@
+{
+  "name": "better-back-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Better Back — TypeScript-first, opinionated, Express-transparent backend framework",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/habtamugeta2-r/Better-backJS.git"
+  },
+  "homepage": "https://github.com/habtamugeta2-r/Better-backJS#readme",
+  "bugs": {
+    "url": "https://github.com/habtamugeta2-r/Better-backJS/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=better-back && npm run build --workspace=@better-back/example-user-api",
+    "typecheck": "npm run build --workspace=better-back && tsc -p packages/core/tsconfig.json --noEmit && tsc -p examples/user-api/tsconfig.json --noEmit && tsc -p tsconfig.bench.json --noEmit",
+    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"examples/*/src/**/*.ts\" \"examples/*/tests/**/*.ts\" \"benchmarks/**/*.ts\"",
+    "format": "prettier --write \"packages/**/*.{ts,json}\" \"examples/**/*.{ts,json}\" \"benchmarks/**/*.ts\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,json}\" \"examples/**/*.{ts,json}\" \"benchmarks/**/*.ts\"",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "verify": "npm run format:check && npm run build && npm run typecheck && npm run lint && npm run test:coverage && npm --workspace=better-back pack --dry-run",
+    "clean": "rm -rf packages/*/dist examples/*/dist coverage *.tgz",
+    "start:example": "node examples/user-api/dist/main.js",
+    "bench": "tsx benchmarks/run.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/autocannon": "^7.12.7",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^20.19.43",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^4.1.12",
+    "autocannon": "^8.0.0",
+    "eslint": "^10.13.0",
+    "prettier": "^3.9.10",
+    "supertest": "^7.3.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^4.1.12"
+  }
+}

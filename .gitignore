@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.npm/
+.cache/
+*.tsbuildinfo
+*.tgz
+*.bundle
+*.wal.jsonl
+.env
+.env.*
+!.env.example

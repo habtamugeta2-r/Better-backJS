@@ -1,0 +1,67 @@
+{
+  "name": "better-back",
+  "version": "1.0.0",
+  "description": "TypeScript-first, opinionated, Express-transparent backend framework with zero reflection magic",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/habtamugeta2-r/Better-backJS.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/habtamugeta2-r/Better-backJS#readme",
+  "bugs": {
+    "url": "https://github.com/habtamugeta2-r/Better-backJS/issues"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "express",
+    "express-5",
+    "typescript",
+    "zod",
+    "openapi",
+    "openapi-3.1",
+    "rfc-7807",
+    "problem-details",
+    "dependency-injection",
+    "backend-framework",
+    "rest-api"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "pino": "^10.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.19.43"
+  }
+}
