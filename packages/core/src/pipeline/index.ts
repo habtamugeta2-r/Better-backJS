@@ -1,5 +1,16 @@
 export { createSafeBodyParser, sanitizeUntrustedObject } from './body-parser.js';
 export {
+  buildCacheControlHeader,
+  buildDefaultRouteCacheKey,
+  computeWeakEtag,
+  executeCachedRoute,
+  matchesIfNoneMatch,
+  sendJsonWithEtag,
+  type RouteCachePolicy,
+  type StoredHttpCacheEnvelope,
+} from './cache.js';
+export {
+  extractW3cTraceId,
   getOrCreateRequestMeta,
   getRequestMeta,
   readResponseRequestId,
@@ -19,6 +30,18 @@ export {
   type SecurityHeadersOptions,
   type SecurityPipelineOptions,
 } from './security.js';
+export {
+  formatSseFrame,
+  isSseStream,
+  pipeSseStream,
+  sse,
+  SSE_STREAM_BRAND,
+  type SseControl,
+  type SseMessage,
+  type SseOptions,
+  type SseProducer,
+  type SseStream,
+} from './sse.js';
 export { createTimeoutMiddleware } from './timeout.js';
 export {
   compileRouteValidator,

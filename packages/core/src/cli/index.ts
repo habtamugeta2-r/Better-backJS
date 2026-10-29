@@ -4,6 +4,7 @@ import {
   devCommand,
   doctorCommand,
   exportOpenApiCommand,
+  exportSdkCommand,
   inspectGraphCommand,
   inspectRoutesCommand,
   type DoctorCheckResult,
@@ -21,16 +22,19 @@ import {
   type NewProjectOptions,
   type SchematicKind,
 } from './scaffolder.js';
+import { generateTypeScriptSdk, type SdkGeneratorOptions } from './sdk.js';
 import { wireSymbolIntoModuleSource } from './wiring.js';
 
-export const CLI_VERSION = '1.0.0';
+export const CLI_VERSION = '1.1.0';
 
 export {
   buildProjectCommand,
   deriveEntityNames,
   doctorCommand,
   exportOpenApiCommand,
+  exportSdkCommand,
   generateSchematic,
+  generateTypeScriptSdk,
   inspectGraphCommand,
   inspectRoutesCommand,
   normalizePackageSlug,
@@ -46,6 +50,7 @@ export {
   type NewProjectOptions,
   type RouteSummaryRow,
   type SchematicKind,
+  type SdkGeneratorOptions,
 };
 
 const HELP_TEXT = `Better Back CLI (v${CLI_VERSION}) — Unified Stage-3 Decorator & Zod v4 Backend Toolkit
@@ -60,15 +65,17 @@ Commands:
   routes [entry]                   Inspect registered routes, auth guards & status codes (works directly on .ts or .js)
   graph [entry]                    Print the explicit @Module dependency, controller, provider & export tree
   openapi [entry]                  Export or CI-check (--check) the OpenAPI 3.1.0 specification JSON
+  sdk [entry]                      Generate or CI-check (--check) a zero-dependency TypeScript fetch Client SDK
   build                            Compile TypeScript, verify startup DI/route graph & optionally emit dist/openapi.json
   doctor [dir]                     Audit Node LTS, strict tsconfig, Stage-3 decorators, .env hygiene & DI graph (--verify-app)
   dev [entry]                      Start watch-mode development server (tsx watch / node --watch)
 
 Options:
   --dir <path>                     Target working / project directory (default: process.cwd())
-  --out, -o <file>                 Output file path for "openapi" command
-  --check <file>                   Verify committed OpenAPI spec matches live app in CI ("openapi --check openapi.json")
-  --prefix <uri>                   Override global apiPrefix for "routes" / "openapi"
+  --out, -o <file>                 Output file path for "openapi" or "sdk" command
+  --check <file>                   Verify committed OpenAPI spec or TypeScript SDK matches live app in CI
+  --client-name <ident>            Custom factory function name for "sdk" (default: "createApiClient")
+  --prefix <uri>                   Override global apiPrefix for "routes", "openapi", or "sdk"
   --project, -p <tsconfig>         Custom tsconfig path for "build"
   --openapi                        Emit dist/openapi.json during "build"
   --verify-app / --no-verify       Enable/skip in-memory startup graph verification in "doctor" / "build"
@@ -111,6 +118,7 @@ export async function runCli(
         dir: { type: 'string' },
         out: { type: 'string', short: 'o' },
         check: { type: 'string' },
+        'client-name': { type: 'string' },
         prefix: { type: 'string' },
         project: { type: 'string', short: 'p' },
         openapi: { type: 'boolean', default: false },
@@ -221,6 +229,23 @@ export async function runCli(
           checkFile: parsed.values.check,
           cwd,
           apiPrefix: parsed.values.prefix,
+        },
+        io,
+      );
+      return 0;
+    }
+
+    if (command === 'sdk') {
+      await exportSdkCommand(
+        {
+          entry: rest[0],
+          outFile: parsed.values.out,
+          checkFile: parsed.values.check,
+          cwd,
+          apiPrefix: parsed.values.prefix,
+          sdkOptions: parsed.values['client-name']
+            ? { clientName: parsed.values['client-name'] }
+            : undefined,
         },
         io,
       );

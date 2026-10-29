@@ -1,5 +1,4 @@
 import type { RequestHandler } from 'express';
-import type { z } from 'zod';
 import {
   ensureOwnArray,
   ensureOwnMap,
@@ -8,15 +7,19 @@ import {
   readClassMetadata,
   type MetadataRecord,
 } from '../common/metadata.js';
+import type { StandardSchemaV1 } from '../common/standard-schema.js';
 import type { ConcreteConstructor } from '../di/tokens.js';
+import type { RouteCachePolicy } from '../pipeline/cache.js';
 import type {
   AuthGuardInput,
   ControllerOptions,
+  DynamicModule,
   EffectiveGuardsUser,
   GuardProbeContext,
   HttpMethod,
   InferResponseOutput,
   MaybePromise,
+  ModuleImport,
   ModuleMetadata,
   RouteContext,
   RouteDefinition,
@@ -31,6 +34,8 @@ const METHOD_MIDDLEWARE_KEY = Symbol.for('better-back.method-middleware');
 const CLASS_GUARDS_KEY = Symbol.for('better-back.class-guards');
 const METHOD_GUARDS_KEY = Symbol.for('better-back.method-guards');
 const METHOD_PUBLIC_KEY = Symbol.for('better-back.method-public');
+const CLASS_CACHE_KEY = Symbol.for('better-back.class-cache');
+const METHOD_CACHE_KEY = Symbol.for('better-back.method-cache');
 
 interface RawPendingRoute {
   readonly method: HttpMethod;
@@ -39,6 +44,15 @@ interface RawPendingRoute {
   readonly takesContext: boolean;
   readonly options: RouteDefinition['options'];
   readonly methodFn: (this: unknown, ctx?: unknown) => MaybePromise<unknown>;
+}
+
+export function isDynamicModule(value: ModuleImport): value is DynamicModule {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'module' in value &&
+    typeof value.module === 'function'
+  );
 }
 
 /**
@@ -88,17 +102,21 @@ function methodAcceptsContext(fn: (...args: never[]) => unknown): boolean {
 function createHttpMethodDecorator(method: HttpMethod) {
   return function <
     const Path extends string = '/',
-    TBody extends z.ZodType | undefined = undefined,
-    TQuery extends z.ZodType | undefined = undefined,
-    TParams extends z.ZodType | undefined = undefined,
-    THeaders extends z.ZodType | undefined = undefined,
-    TRes extends z.ZodType | undefined = undefined,
-  >(path: Path = '/' as Path, options: RouteOptions<TBody, TQuery, TParams, THeaders, TRes> = {}) {
+    TBody extends StandardSchemaV1 | undefined = undefined,
+    TQuery extends StandardSchemaV1 | undefined = undefined,
+    TParams extends StandardSchemaV1 | undefined = undefined,
+    THeaders extends StandardSchemaV1 | undefined = undefined,
+    TRes extends StandardSchemaV1 | undefined = undefined,
+    TSse extends StandardSchemaV1 | undefined = undefined,
+  >(
+    path: Path = '/' as Path,
+    options: RouteOptions<TBody, TQuery, TParams, THeaders, TRes, TSse> = {},
+  ) {
     return function <This extends object, TUser = unknown>(
       target: (
         this: This,
         ctx: RouteContext<Path, TBody, TQuery, TParams, THeaders, TUser>,
-      ) => MaybePromise<InferResponseOutput<TRes>>,
+      ) => MaybePromise<InferResponseOutput<TRes, TSse>>,
       context: ClassMethodDecoratorContext<This>,
     ): void {
       if (context.kind !== 'method') {
@@ -127,6 +145,26 @@ export const Patch = createHttpMethodDecorator('patch');
 export const Delete = createHttpMethodDecorator('delete');
 export const Options = createHttpMethodDecorator('options');
 export const Head = createHttpMethodDecorator('head');
+
+/**
+ * Attaches declarative HTTP response caching (`CachePort` + `ETag` + `Cache-Control` + optional `swrMs`)
+ * to a `@Controller` class (applies to `GET`/`HEAD` routes) or an individual route method.
+ */
+export function Cache(policy: number | RouteCachePolicy) {
+  const normalized: RouteCachePolicy = typeof policy === 'number' ? { ttlMs: policy } : policy;
+  return function (
+    _target: unknown,
+    context: ClassDecoratorContext | ClassMethodDecoratorContext,
+  ): void {
+    const meta = context.metadata as MetadataRecord;
+    if (context.kind === 'class') {
+      meta[CLASS_CACHE_KEY] = normalized;
+    } else if (context.kind === 'method') {
+      const map = ensureOwnMap<PropertyKey, RouteCachePolicy>(meta, METHOD_CACHE_KEY);
+      map.set(context.name, normalized);
+    }
+  };
+}
 
 /**
  * Attaches native Express middleware (`cors()`, `helmet()`, `morgan()`, custom `RequestHandler`)
@@ -164,11 +202,6 @@ export interface GuardDecorator<TUser> {
 /**
  * Attaches one or more composable `AuthGuard`s (`@Guard(BearerAuthGuard, AdminRoleGuard)`)
  * to a `@Controller` or route method.
- *
- * - Guards execute deterministically in pipeline order: `global -> @Controller -> method`
- *   (all bypassed when `@Public()` is present on the route method).
- * - Enforces at compile time that the guarded method's `Ctx<{ user: ... }>` type matches
- *   the `TUser` returned by the guard chain.
  */
 export function Guard<
   const TGuards extends readonly [
@@ -183,8 +216,6 @@ export function Guard<
     const meta = context.metadata as MetadataRecord;
     if (context.kind === 'class') {
       const list = ensureOwnArray<AuthGuardInput<unknown, never>>(meta, CLASS_GUARDS_KEY);
-      // Multiple stacked @Guard decorators on a class evaluate bottom-up in JS; prepend if stacked
-      // while preserving left-to-right order within `@Guard(FirstGuard, SecondGuard)`.
       list.unshift(...guards);
     } else if (context.kind === 'method') {
       const map = ensureOwnMap<PropertyKey, AuthGuardInput<unknown, never>[]>(
@@ -192,7 +223,6 @@ export function Guard<
         METHOD_GUARDS_KEY,
       );
       const current = map.get(context.name) ?? [];
-      // Stacked method decorators evaluate bottom-up in Stage-3 JS; unshift keeps top-to-bottom source order!
       current.unshift(...guards);
       map.set(context.name, current);
     }
@@ -223,6 +253,7 @@ export interface ExtractedControllerMetadata {
   readonly options: ControllerOptions<string>;
   readonly classGuards: readonly AuthGuardInput<unknown, never>[];
   readonly classMiddlewares: readonly RequestHandler[];
+  readonly classCachePolicy: RouteCachePolicy | undefined;
   readonly routes: readonly RouteDefinition[];
 }
 
@@ -241,12 +272,18 @@ export function extractControllerMetadata(
   const classGuards = hasOwnMetadata(meta, CLASS_GUARDS_KEY)
     ? (meta[CLASS_GUARDS_KEY] as AuthGuardInput<unknown, never>[])
     : [];
+  const classCachePolicy = hasOwnMetadata(meta, CLASS_CACHE_KEY)
+    ? (meta[CLASS_CACHE_KEY] as RouteCachePolicy)
+    : undefined;
 
   const methodMwMap = hasOwnMetadata(meta, METHOD_MIDDLEWARE_KEY)
     ? (meta[METHOD_MIDDLEWARE_KEY] as Map<PropertyKey, RequestHandler[]>)
     : undefined;
   const methodGuardsMap = hasOwnMetadata(meta, METHOD_GUARDS_KEY)
     ? (meta[METHOD_GUARDS_KEY] as Map<PropertyKey, AuthGuardInput<unknown, never>[]>)
+    : undefined;
+  const methodCacheMap = hasOwnMetadata(meta, METHOD_CACHE_KEY)
+    ? (meta[METHOD_CACHE_KEY] as Map<PropertyKey, RouteCachePolicy>)
     : undefined;
   const publicSet = hasOwnMetadata(meta, METHOD_PUBLIC_KEY)
     ? (meta[METHOD_PUBLIC_KEY] as Set<PropertyKey>)
@@ -262,6 +299,7 @@ export function extractControllerMetadata(
     handlerName: r.handlerName,
     takesContext: r.takesContext,
     options: r.options,
+    cachePolicy: r.options.cache ?? methodCacheMap?.get(r.handlerName) ?? classCachePolicy,
     guards: methodGuardsMap?.get(r.handlerName) ?? [],
     isPublic: publicSet?.has(r.handlerName) ?? false,
     middlewares: methodMwMap?.get(r.handlerName) ?? [],
@@ -272,6 +310,7 @@ export function extractControllerMetadata(
     options: baseOptions,
     classGuards,
     classMiddlewares,
+    classCachePolicy,
     routes: mergedRoutes,
   };
 }

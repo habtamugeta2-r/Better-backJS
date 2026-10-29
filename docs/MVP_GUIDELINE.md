@@ -872,7 +872,7 @@ npm publish --workspace=better-back --access public
 npm publish --workspace=create-better-back --access public
 
 # 5. Tag the git release
-git tag -a v1.0.0 -m "Release better-back v1.0.0"
+git tag -a v1.1.0 -m "Release better-back v1.1.0"
 git push origin main --tags
 ```
 
@@ -908,11 +908,11 @@ npm test
 
 Use this final checklist to track the project from repository sync to public MVP launch:
 
-- [x] **Core Runtime (`packages/core`)**: Unified Stage-3 decorators, 1-line `inject(Token)`, `Ctx<...>`, `defineConfig`, Zod v4 + Standard Schema v1 validation, OpenAPI 3.1 `/docs`, OWASP security headers, strict CORS, rate limiting, RFC 7807 `ProblemDetails`, health/readiness probes, graceful shutdown, and `toExpressRouter` Express interop.
-- [x] **First-Class CLI (`better-back` / `bb` + `create-better-back`)**: `new`, `generate` (`resource`, `module`, `controller`, `service`, `guard`, `repository`), `routes`, `graph`, `openapi` (`--out` / `--check`), `build` (`--openapi`), `doctor` (`--verify-app`), and `dev` with zero extra runtime dependencies.
-- [x] **Reference Application (`examples/user-api`)**: Complete Users & Posts CRUD API using only public `better-back` exports, demonstrating `InMemory` ⇄ `WAL` repository swapping, chained guards, native Express middlewares, and unit + E2E tests.
-- [x] **Documentation & ADRs (`docs/` + `docs-site/`)**: Grounded Pain Map, Design Spec, CLI Guide, Migration Guides (Express / NestJS / Fastify), ADRs `001`–`011`, and Next.js 16 documentation site including CLI & scaffolding docs.
-- [x] **Verification & Benchmarks**: `npm run verify` (`45/45` tests, `91.89%` line coverage, `0` lint/type errors across all 4 workspaces) and `npm run bench` (`-4.36%` Engine Core delta vs bare Express 5).
+- [x] **Core Runtime (`packages/core` v1.1.0)**: Unified Stage-3 decorators, `DynamicModule`, 1-line `inject(Token)` (`optional` / `defaultValue`), `Ctx<...>`, `defineConfig`, Zod v4 + Standard Schema v1 validation, `@Cache` + weak `ETag` (`304`) + SWR + stampede-safe `cacheGetOrSet`, typed `sse()` streaming, W3C `traceparent` + `/metrics`, OpenAPI 3.1 `/docs` (Copy `curl` + live SSE), OWASP security headers, strict CORS, rate limiting, RFC 7807 `ProblemDetails`, health/readiness probes, graceful shutdown, and `toExpressRouter` Express interop.
+- [x] **First-Class CLI (`better-back` / `bb` + `create-better-back` v1.1.0)**: `new`, `generate` (`resource`, `module`, `controller`, `service`, `guard`, `repository`), `routes`, `graph`, `openapi` (`--out` / `--check`), **`sdk` (`--out` / `--check` zero-dep strict-TS `fetch` + SSE client generator)**, `build` (`--openapi`), `doctor` (`--verify-app`), and `dev` with zero extra runtime dependencies.
+- [x] **Reference Application (`examples/user-api` v1.1.0)**: Complete Users & Posts CRUD + SSE + `/metrics` + ETag API using only public `better-back` exports, demonstrating `InMemory` ⇄ `WAL` repository swapping, chained guards, native Express middlewares, and unit + E2E tests.
+- [x] **Documentation & ADRs (`docs/` + `docs-site/` + `CHANGELOG.md`)**: Grounded Pain Map, Design Spec, CLI Guide, Migration Guides (Express / NestJS / Fastify), ADRs `001`–`012`, `CHANGELOG.md`, and Next.js 16 documentation site (`13/13` SSG routes including `/docs/caching-and-sse`, `/docs/observability`, and `bb sdk`).
+- [x] **Verification & Benchmarks**: `npm run verify` (`51/51` tests across `9/9` suites, `91.30%` line coverage, `0` lint/type errors across all 4 workspaces) and `npm run bench` (`-1.08%` Engine Core delta vs bare Express 5).
 - [ ] **GitHub Push**: Push `main` to `https://github.com/habtamugeta2-r/Better-backJS` and confirm `.github/workflows/ci.yml` passes across Node `20`, `22`, and `24`.
-- [ ] **npm Release**: Publish `better-back@1.0.0` and `create-better-back@1.0.0` to the npm registry and verify `npm create better-back@latest`.
+- [ ] **npm Release**: Publish `better-back@1.1.0` and `create-better-back@1.1.0` to the npm registry and verify `npm create better-back@latest`.
 - [ ] **Docs Deployment**: Deploy `docs-site` to production URL and link it in the GitHub repository description.

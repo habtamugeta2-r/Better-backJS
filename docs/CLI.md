@@ -56,16 +56,16 @@ npx bb g guard api-key
 
 ---
 
-## 3. Architecture & Contract Introspection (`routes`, `graph`, `openapi`)
+## 3. Architecture, Contract Introspection & Typed SDK Generation (`routes`, `graph`, `openapi`, `sdk`)
 
-All introspection commands boot your module graph in memory **without binding a TCP socket**:
+All introspection and codegen commands boot your module graph in memory **without binding a TCP socket**:
 
 ```bash
 # Print aligned HTTP route table (or machine-readable JSON)
 npx bb routes
 npx bb routes src/app.module.ts --json --prefix /api/v2
 
-# Print explicit @Module dependency, controller, provider & export tree
+# Print explicit @Module / DynamicModule dependency, controller, provider & export tree
 npx bb graph
 npx bb graph --json
 
@@ -74,6 +74,13 @@ npx bb openapi --out openapi.json
 
 # Verify in CI that committed openapi.json has not drifted from code
 npx bb openapi --check openapi.json
+
+# Generate a zero-dependency, strict-TypeScript fetch + SSE client SDK from OpenAPI 3.1
+npx bb sdk --out src/sdk/client.ts
+npx bb sdk --out src/sdk/client.ts --name createUsersSdk --no-system
+
+# Verify in CI that committed SDK client matches current route contracts
+npx bb sdk --check src/sdk/client.ts
 ```
 
 ---
@@ -104,6 +111,8 @@ import {
   doctorCommand,
   exportOpenApiCommand,
   generateSchematic,
+  generateSdkCommand,
+  generateTypeScriptSdk,
   inspectGraphCommand,
   inspectRoutesCommand,
   runCli,

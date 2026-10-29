@@ -1,4 +1,12 @@
-export { Container, inject, type ModuleProviderRegistration, type Resolver } from './container.js';
+export {
+  Container,
+  inject,
+  type InjectDefaultOptions,
+  type InjectOptionalOptions,
+  type InjectOptions,
+  type ModuleProviderRegistration,
+  type Resolver,
+} from './container.js';
 export { getInjectableMetadata, Injectable, type InjectableOptions } from './decorators.js';
 export {
   createToken,

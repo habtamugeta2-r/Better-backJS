@@ -201,6 +201,19 @@ pre {
   max-height: 340px;
 }
 .hidden { display: none; }
+.btn-row { display: flex; gap: 0.5rem; margin-top: 0.65rem; flex-wrap: wrap; }
+.btn-row .btn-send { margin-top: 0; flex: 1 1 auto; }
+.btn-copy {
+  background: var(--panel-alt);
+  color: var(--text);
+  border: 1px solid var(--border-hi);
+  padding: 0.52rem 0.85rem;
+  border-radius: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-copy:hover { border-color: var(--accent); color: var(--accent); }
 .empty-note { color: var(--muted); font-size: 0.85rem; padding: 1.5rem; text-align: center; border: 1px dashed var(--border-hi); border-radius: 0.6rem; }
 `;
 
@@ -362,11 +375,76 @@ function renderEndpoints(queryText = '') {
       leftCol.appendChild(bodyTextarea);
     }
 
+    const btnRow = document.createElement('div');
+    btnRow.className = 'btn-row';
+
     const sendBtn = document.createElement('button');
     sendBtn.type = 'button';
     sendBtn.className = 'btn-send';
     sendBtn.textContent = 'Send ' + item.method.toUpperCase() + ' Request';
-    leftCol.appendChild(sendBtn);
+    btnRow.appendChild(sendBtn);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn-copy';
+    copyBtn.textContent = 'Copy curl';
+    btnRow.appendChild(copyBtn);
+
+    leftCol.appendChild(btnRow);
+
+    function buildRequestParts() {
+      let resolvedPath = item.path;
+      const queryPairs = [];
+      const isSseOp = Boolean(
+        item.op.responses &&
+        item.op.responses['200'] &&
+        item.op.responses['200'].content &&
+        item.op.responses['200'].content['text/event-stream']
+      );
+      const headers = { Accept: isSseOp ? 'text/event-stream' : 'application/json' };
+
+      const bearer = tokenInput.value.trim();
+      if (bearer) {
+        headers['Authorization'] = bearer.startsWith('Bearer ') ? bearer : 'Bearer ' + bearer;
+      }
+
+      for (const { def, el } of paramInputs) {
+        const val = el.value.trim();
+        if (def.in === 'path') {
+          resolvedPath = resolvedPath.replace('{' + def.name + '}', encodeURIComponent(val || 'missing'));
+        } else if (def.in === 'query' && val !== '') {
+          queryPairs.push(encodeURIComponent(def.name) + '=' + encodeURIComponent(val));
+        } else if (def.in === 'header' && val !== '') {
+          headers[def.name] = val;
+        }
+      }
+
+      const url = resolvedPath + (queryPairs.length ? '?' + queryPairs.join('&') : '');
+      const init = { method: item.method.toUpperCase(), headers };
+      if (bodyTextarea) {
+        headers['Content-Type'] = 'application/json';
+        init.body = bodyTextarea.value;
+      }
+      return { url, init, headers, isSseOp };
+    }
+
+    copyBtn.addEventListener('click', async () => {
+      const { url, init, headers } = buildRequestParts();
+      const absUrl = window.location.origin + url;
+      const parts = ['curl -X ' + init.method];
+      for (const [hk, hv] of Object.entries(headers)) {
+        parts.push('-H ' + JSON.stringify(hk + ': ' + hv));
+      }
+      if (init.body) {
+        parts.push('-d ' + JSON.stringify(init.body));
+      }
+      parts.push(JSON.stringify(absUrl));
+      try {
+        await navigator.clipboard.writeText(parts.join(' \\\n  '));
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy curl'; }, 1400);
+      } catch {}
+    });
 
     const rightCol = document.createElement('div');
     const resWrap = document.createElement('div');
@@ -408,53 +486,44 @@ function renderEndpoints(queryText = '') {
     rightCol.appendChild(contractPre);
 
     sendBtn.addEventListener('click', async () => {
-      let resolvedPath = item.path;
-      const queryPairs = [];
-      const headers = { Accept: 'application/json' };
-
-      const bearer = tokenInput.value.trim();
-      if (bearer) {
-        headers['Authorization'] = bearer.startsWith('Bearer ') ? bearer : 'Bearer ' + bearer;
-      }
-
-      for (const { def, el } of paramInputs) {
-        const val = el.value.trim();
-        if (def.in === 'path') {
-          resolvedPath = resolvedPath.replace('{' + def.name + '}', encodeURIComponent(val || 'missing'));
-        } else if (def.in === 'query' && val !== '') {
-          queryPairs.push(encodeURIComponent(def.name) + '=' + encodeURIComponent(val));
-        } else if (def.in === 'header' && val !== '') {
-          headers[def.name] = val;
-        }
-      }
-
-      const url = resolvedPath + (queryPairs.length ? '?' + queryPairs.join('&') : '');
-      const init = { method: item.method.toUpperCase(), headers };
-      if (bodyTextarea) {
-        headers['Content-Type'] = 'application/json';
-        init.body = bodyTextarea.value;
-      }
+      const { url, init, isSseOp } = buildRequestParts();
 
       sendBtn.textContent = 'Sending...';
       const t0 = performance.now();
       try {
         const res = await fetch(url, init);
         const elapsed = (performance.now() - t0).toFixed(1);
-        const rawText = await res.text();
-        let formatted = rawText;
-        try {
-          formatted = JSON.stringify(JSON.parse(rawText), null, 2);
-        } catch {}
+        const contentType = res.headers.get('content-type') || '';
 
         statusPill.textContent = res.status + ' ' + (res.statusText || '');
         statusPill.className = 'status-pill ' + (res.status < 300 ? 's-ok' : res.status < 500 ? 's-warn' : 's-err');
         timingSpan.textContent = elapsed + ' ms';
-        resBodyPre.textContent = formatted || '(empty body)';
 
         const headerLines = [];
         res.headers.forEach((v, k) => headerLines.push(k + ': ' + v));
         resHeadersPre.textContent = headerLines.join('\\n');
         resWrap.classList.remove('hidden');
+
+        if ((isSseOp || contentType.includes('text/event-stream')) && res.body) {
+          resBodyPre.textContent = '';
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let chunks = 0;
+          while (chunks < 25) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            resBodyPre.textContent += decoder.decode(value, { stream: true });
+            chunks += 1;
+          }
+          await reader.cancel();
+        } else {
+          const rawText = await res.text();
+          let formatted = rawText;
+          try {
+            formatted = JSON.stringify(JSON.parse(rawText), null, 2);
+          } catch {}
+          resBodyPre.textContent = formatted || '(empty body)';
+        }
       } catch (err) {
         statusPill.textContent = 'Network Error';
         statusPill.className = 'status-pill s-err';

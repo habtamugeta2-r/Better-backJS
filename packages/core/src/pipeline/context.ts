@@ -1,8 +1,32 @@
 import type { Request, Response } from 'express';
 import type { Logger } from '../logging/logger.js';
 
+const W3C_TRACEPARENT_RE = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i;
+const ALL_ZERO_TRACE_ID = '00000000000000000000000000000000';
+const ALL_ZERO_SPAN_ID = '0000000000000000';
+
+/**
+ * Parses a valid W3C Trace Context `traceparent` header (`00-<traceId>-<spanId>-<flags>`)
+ * and returns the 32-char lowercase hex `traceId` (or `undefined` when absent/invalid).
+ */
+export function extractW3cTraceId(req: Request): string | undefined {
+  const raw = req.headers['traceparent'];
+  if (typeof raw !== 'string' || raw.length !== 55) {
+    return undefined;
+  }
+  const match = W3C_TRACEPARENT_RE.exec(raw);
+  if (!match) return undefined;
+  const traceId = match[1]!.toLowerCase();
+  const spanId = match[2]!.toLowerCase();
+  if (traceId === ALL_ZERO_TRACE_ID || spanId === ALL_ZERO_SPAN_ID) {
+    return undefined;
+  }
+  return traceId;
+}
+
 export interface RequestMeta {
   readonly requestId: string;
+  readonly traceId: string | undefined;
   readonly startedAt: number;
   readonly log: Logger;
   timedOut: boolean;
@@ -14,6 +38,7 @@ const REQUEST_META_MAP = new WeakMap<Request, RequestMeta>();
 
 class RequestMetaImpl implements RequestMeta {
   public readonly requestId: string;
+  public readonly traceId: string | undefined;
   public readonly startedAt: number;
   public timedOut = false;
   private readonly baseLogger: Logger;
@@ -22,15 +47,23 @@ class RequestMetaImpl implements RequestMeta {
   private abortReason: unknown;
   private isAborted = false;
 
-  public constructor(requestId: string, baseLogger: Logger, startedAt: number) {
+  public constructor(
+    requestId: string,
+    traceId: string | undefined,
+    baseLogger: Logger,
+    startedAt: number,
+  ) {
     this.requestId = requestId;
+    this.traceId = traceId;
     this.baseLogger = baseLogger;
     this.startedAt = startedAt;
   }
 
   public get log(): Logger {
     if (this.cachedChild === undefined) {
-      this.cachedChild = this.baseLogger.child({ requestId: this.requestId });
+      this.cachedChild = this.traceId
+        ? this.baseLogger.child({ requestId: this.requestId, traceId: this.traceId })
+        : this.baseLogger.child({ requestId: this.requestId });
     }
     return this.cachedChild;
   }
@@ -74,7 +107,7 @@ export function setRequestMeta(
   baseLogger: Logger,
   startedAt = 0,
 ): RequestMeta {
-  const meta = new RequestMetaImpl(requestId, baseLogger, startedAt);
+  const meta = new RequestMetaImpl(requestId, extractW3cTraceId(req), baseLogger, startedAt);
   REQUEST_META_MAP.set(req, meta);
   return meta;
 }

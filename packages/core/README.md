@@ -1,14 +1,15 @@
-# Better Back (`better-back`)
+# Better Back (`better-back` v1.1)
 
-> **Express 5 clarity. Unified Stage-3 decorators. Zod v4 single-source-of-truth safety. Production-hardened on line one.**
+> **Express 5 clarity. Unified Stage-3 decorators. Zod v4 & Standard Schema v1 single-source-of-truth safety. Production-hardened on line one.**
 
 **Better Back** is a minimal, fast, decorator-first TypeScript backend framework built directly on **Express 5**, **Zod v4**, and **Pino**:
 
-- **One Unified Syntax — Zero Overlap**: Standard ECMAScript Stage-3 decorators (`@Module`, `@Controller`, `@Injectable`, `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, `@Guard`, `@Public`, `@Use`), **1-line `inject(Token)`** dependency injection, and inline **`Ctx<...>`** route typing. Zero `reflect-metadata`, zero legacy compiler flags, and zero competing routing DSLs.
-- **One Schema = Validation + TypeScript Types + OpenAPI 3.1 `$ref` Components**: Write **one** Zod v4 schema per endpoint (`.meta({ id: 'User' })` automatically hoists `#/components/schemas/User` in `/docs`). Runtime input/output validation, compile-time `Ctx<...>` + `@Guard` user verification, and OpenAPI 3.1 specs stay mathematically in sync.
+- **One Unified Syntax — Zero Overlap**: Standard ECMAScript Stage-3 decorators (`@Module`, `@Controller`, `@Injectable`, `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Options`, `@Head`, `@Cache`, `@Guard`, `@Public`, `@Use`), configurable **`DynamicModule`** (`register(...)`), **1-line `inject(Token)`** (including `{ optional: true }` & `{ defaultValue }`), and inline **`Ctx<...>`** route typing. Zero `reflect-metadata`, zero legacy compiler flags, and zero competing routing DSLs.
+- **One Schema = Validation + TypeScript Types + OpenAPI 3.1 `$ref` + Typed Client SDK**: Write **one** Zod v4 (or any **Standard Schema v1** validator — Valibot, ArkType, Effect Schema) contract per endpoint (`.meta({ id: 'User' })` automatically hoists `#/components/schemas/User` in `/docs`), and generate a zero-dependency TypeScript `fetch` + SSE client in one command (`npx bb sdk`).
+- **Built-In HTTP Caching, `ETag` / `304`, SWR & Typed SSE (`sse()`)**: Add `@Cache({ ttlMs, swrMs, varyByUser })` + RFC 9110 weak `ETag` (`304 Not Modified`) + stampede-coalescing `cacheGetOrSet()`, or stream validated real-time Server-Sent Events with `sse(async function* ({ signal }) { ... })` that automatically drain cleanly on `app.close()`.
 - **Express-Transparent, Zero Lock-In**: `app.express` is a real `express.Application`. Use `cors`, `helmet`, `morgan`, or any `(req, res, next)` middleware with **zero adapters**, or mount any module into an existing Express app with `toExpressRouter()`.
-- **Secure, Proxy-Safe & Observable Out of the Box**: OWASP API Security Top 10 headers, strict deny-by-default CORS, `trustProxy` + per-route rate-limit isolation, symmetrical infrastructure ports (`LoggerToken`, `RateLimiterToken` / `InMemoryRateLimiter`, `CacheToken` / `InMemoryCache`), `100kb` JSON body limit, prototype-pollution protection, `30s` timeouts, RFC 7807 `application/problem+json` errors, sanitized `x-request-id` correlation, secret-redacted Pino JSON logs, `/health` + `/ready`, and graceful shutdown ship active with zero configuration.
-- **Tiny & Fast**: Only **3 runtime dependencies** (`express`, `zod`, `pino`), **`0.90 ms`** cold boot, and **`-4.20%` Engine Core delta vs bare Express 5** (`+18.2%` faster than `Express 5 + helmet + cors` with Secure-by-Default active).
+- **Secure, Proxy-Safe & Observable Out of the Box**: OWASP API Security Top 10 headers, strict deny-by-default CORS, `trustProxy` + per-route rate-limit isolation, symmetrical infrastructure ports (`LoggerToken`, `RateLimiterToken` / `InMemoryRateLimiter`, `CacheToken` / LRU `InMemoryCache`, `MetricsToken` / `InMemoryMetrics`), W3C `traceparent` `traceId` propagation, opt-in `/metrics` (Prometheus `0.0.4` + JSON), `100kb` JSON body limit, prototype-pollution protection, `30s` timeouts, RFC 7807 `application/problem+json` errors, `/health` + `/ready`, and graceful shutdown.
+- **Tiny & Fast**: Only **3 runtime dependencies** (`express`, `zod`, `pino`), **`1.27 ms`** cold boot, and **`-1.08%` Engine Core delta vs bare Express 5** (`+9.44%` faster than `Express 5 + helmet + cors` with Secure-by-Default active).
 
 ---
 
@@ -32,6 +33,7 @@ npx bb g guard api-key             # Scaffolds src/common/api-key.guard.ts
 npx bb routes                      # Prints registered routes, guards & status codes directly from .ts or .js
 npx bb graph                       # Prints the explicit @Module dependency, controller & provider tree
 npx bb openapi --out openapi.json  # Exports OpenAPI 3.1.0 JSON (or --check openapi.json in CI)
+npx bb sdk --out src/sdk/client.ts # Generates zero-dep strict-TS fetch + SSE client (or --check in CI)
 npx bb build --openapi             # Compiles TS, verifies DI/route startup graph & emits dist/openapi.json
 npx bb doctor --verify-app         # Verifies Node >= 20, strict tsconfig, Stage-3 decorators & live DI graph
 ```
@@ -273,25 +275,18 @@ Measured across isolated child server processes (`autocannon`, 50 concurrent con
 
 | Target Stack | Median `req/s` | Mean `req/s` | `p50` | `p99` | vs Raw Express |
 |---|---:|---:|---:|---:|---:|
-| **Raw Express 5 (Bare — no headers, no correlation ID, no timeout)** | `9,198.67` | `9,230.27` | `4 ms` | `16 ms` | baseline |
-| **Express 5 + `helmet` + `cors` + `x-request-id` + `json` (Manual Prod Stack)** | `7,378.67` | `7,490.14` | `5 ms` | `18 ms` | `-19.79%` |
-| **Better Back — Engine Core (DI + Stage-3 Routing + Correlation + RFC 7807)** | **`8,812.00`** | **`8,861.74`** | **`4 ms`** | **`15 ms`** | **`-4.20%`** |
-| **Better Back — Secure-by-Default (+7 OWASP Headers + CORS + 30s Timeout)** | **`8,720.67`** | **`8,633.47`** | **`5 ms`** | **`16 ms`** | **`-5.20%`** *(+18.2% faster than Express+helmet+cors)* |
-| **Better Back — Full Observability (+Pino JSON Request Logs)** | `6,355.34` | `6,403.07` | `6 ms` | `18 ms` | `-30.91%` |
-| **Better Back — Validated `POST /users` (Body Parse + Zod v4 In/Out)** | `5,848.67` | `6,159.07` | `7 ms` | `20 ms` | `-36.42%` |
+| **Raw Express 5 (Bare — no headers, no correlation ID, no timeout)** | `5,572.67` | `5,615.60` | `7 ms` | `22 ms` | baseline |
+| **Express 5 + `helmet` + `cors` + `x-request-id` + `json` (Manual Prod Stack)** | `4,587.67` | `4,600.67` | `9 ms` | `24 ms` | `-17.68%` |
+| **Better Back — Engine Core (DI + Stage-3 Routing + Correlation + RFC 7807)** | **`5,512.67`** | **`5,517.47`** | **`7 ms`** | **`20 ms`** | **`-1.08%`** |
+| **Better Back — Secure-by-Default (+7 OWASP Headers + CORS + 30s Timeout)** | **`5,020.67`** | **`5,060.67`** | **`8 ms`** | **`24 ms`** | **`-9.91%`** *(+9.44% faster than Express+helmet+cors)* |
+| **Better Back — Full Observability (+Pino JSON Request Logs)** | `4,047.00` | `4,122.00` | `11 ms` | `25 ms` | `-27.38%` |
+| **Better Back — Validated `POST /users` (Body Parse + Zod v4 In/Out)** | `3,688.00` | `3,732.27` | `11 ms` | `29 ms` | `-33.82%` |
 
-- **Cold Startup Median (10 runs)**: Raw Express `0.24 ms` vs Better Back `0.90 ms` (including DI graph verification, route validator compilation, and OpenAPI 3.1 synthesis).
+- **Cold Startup Median (10 runs)**: Raw Express `0.31 ms` vs Better Back `1.27 ms` (including DI graph verification, route validator compilation, and OpenAPI 3.1 synthesis).
 
 ---
 
 ## Architecture & Documentation
 
-- [Phase 0 — Grounded Pain Map & Framework Comparative Study](./docs/PAIN_MAP.md)
-- [Phase 1 — Architecture & Design Document](./docs/DESIGN.md)
-- [Migration Guides (Raw Express, NestJS, Fastify)](./docs/MIGRATION.md)
-- [Final Verification Report](./docs/FINAL_REPORT.md)
-- [Architecture Decision Records (`docs/adr/001`–`010`)](./docs/adr/)
-
-## License
-
-Apache-2.0
+- Repository & Full Docs: <https://github.com/habtamugeta2-r/Better-backJS>
+- License: Apache-2.0

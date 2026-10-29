@@ -1,10 +1,11 @@
 /**
- * Better Back (`better-back`) — Unified Decorator-First Public API
+ * Better Back (`better-back`) v1.1 — Unified Decorator-First Public API
  *
  * Minimal syntax, high performance, zero overlap:
- * - Standard ECMAScript Stage-3 decorators (`@Module`, `@Controller`, `@Injectable`, `@Get`, `@Post`, `@Guard`, `@Use`)
- * - 1-line type-safe DI via `inject(Token)` (zero `reflect-metadata`, zero constructor ceremony)
- * - Single-Source-of-Truth Zod v4 contracts + `Ctx<...>` handler typing + auto OpenAPI 3.1 at `/docs`
+ * - Standard ECMAScript Stage-3 decorators (`@Module`, `@Controller`, `@Injectable`, `@Get`, `@Post`, `@Cache`, `@Guard`, `@Use`)
+ * - 1-line type-safe DI via `inject(Token)` + optional/default injection + `DynamicModule`
+ * - Single-Source-of-Truth Zod v4 / Standard Schema v1 contracts + `Ctx<...>` + auto OpenAPI 3.1 at `/docs`
+ * - Declarative HTTP caching & conditional `ETag` (`304 Not Modified`), typed SSE (`sse()`), W3C `traceparent` & `/metrics`
  * - OWASP security defaults + RFC 7807 `ProblemDetails` out of the box
  */
 
@@ -17,6 +18,25 @@ export {
   type ToExpressRouterOptions,
   type TrustProxySetting,
 } from './application.js';
+
+// Standard Schema v1 (`~standard`) Interoperability
+export {
+  isStandardSchema,
+  type InferSchemaInput,
+  type InferSchemaOutput,
+  type StandardJsonSchemaConverter,
+  type StandardJsonSchemaOptions,
+  type StandardJsonSchemaTarget,
+  type StandardSchemaFailureResult,
+  type StandardSchemaIssue,
+  type StandardSchemaOptions,
+  type StandardSchemaPathSegment,
+  type StandardSchemaProps,
+  type StandardSchemaResult,
+  type StandardSchemaSuccessResult,
+  type StandardSchemaTypes,
+  type StandardSchemaV1,
+} from './common/standard-schema.js';
 
 // Testing Utilities
 export {
@@ -40,7 +60,10 @@ export {
   type ConcreteConstructor,
   type FactoryProvider,
   type InjectableOptions,
+  type InjectDefaultOptions,
   type InjectionToken,
+  type InjectOptionalOptions,
+  type InjectOptions,
   type ModuleProviderRegistration,
   type OnApplicationShutdown,
   type OnModuleInit,
@@ -52,8 +75,9 @@ export {
   type ValueProvider,
 } from './di/index.js';
 
-// Unified Stage-3 Routing, Auth & Middleware Decorators
+// Unified Stage-3 Routing, Caching, Auth & Middleware Decorators
 export {
+  Cache,
   Controller,
   createPaginatedResponseSchema,
   createPaginationQuerySchema,
@@ -61,6 +85,7 @@ export {
   Get,
   Guard,
   Head,
+  isDynamicModule,
   Module,
   normalizeRouteSignature,
   Options,
@@ -82,6 +107,7 @@ export {
   type CtxSpec,
   type DeepReadonly,
   type DocumentedErrorStatus,
+  type DynamicModule,
   type EffectiveGuardsUser,
   type ExtractRouteParamNames,
   type GuardContext,
@@ -92,6 +118,7 @@ export {
   type InferSchemaOr,
   type InferSingleGuardUser,
   type MaybePromise,
+  type ModuleImport,
   type ModuleMetadata,
   type PaginatedResult,
   type PaginationMeta,
@@ -155,27 +182,47 @@ export {
   type LogLevel,
 } from './logging/index.js';
 
-// Infrastructure & Extension Ports (Database / Cache / Rate-Limiter Agnostic)
+// Infrastructure & Extension Ports (Database / Cache / Rate-Limiter / Metrics Agnostic)
 export {
+  cacheGetOrSet,
   CachePortToken,
   CacheToken,
   InMemoryCache,
+  InMemoryMetrics,
   InMemoryRateLimiter,
+  MetricsToken,
   RateLimiterToken,
   type CachePort,
+  type HttpMetricObservation,
+  type MetricLabels,
+  type MetricsPipelineOptions,
+  type MetricsPort,
+  type MetricsSnapshot,
   type RateLimitDecision,
   type RateLimiterPort,
   type RateLimitPolicy,
 } from './ports/index.js';
 
-// Security, Health & Rate-Limit Pipeline Utilities
+// Security, Caching, SSE, Tracing, Health & Rate-Limit Pipeline Utilities
 export {
+  computeWeakEtag,
   createRateLimitMiddleware,
+  extractW3cTraceId,
+  isSseStream,
+  matchesIfNoneMatch,
+  sse,
+  SSE_STREAM_BRAND,
   type CorsOptions,
   type HealthCheck,
   type HealthCheckStatus,
+  type RouteCachePolicy,
   type SecurityHeadersOptions,
   type SecurityPipelineOptions,
+  type SseControl,
+  type SseMessage,
+  type SseOptions,
+  type SseProducer,
+  type SseStream,
 } from './pipeline/index.js';
 
 // OpenAPI 3.1
@@ -183,4 +230,5 @@ export {
   generateOpenApiDocument,
   type OpenApiDocument,
   type OpenApiOptions,
+  type OpenApiServer,
 } from './openapi/index.js';

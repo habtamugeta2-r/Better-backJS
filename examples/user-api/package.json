@@ -1,6 +1,6 @@
 {
   "name": "@better-back/example-user-api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
     "routes": "node ../../packages/core/dist/bin.js routes src/app.module.ts",
     "graph": "node ../../packages/core/dist/bin.js graph src/app.module.ts",
     "openapi": "node ../../packages/core/dist/bin.js openapi src/app.module.ts --out openapi.json",
+    "sdk": "node ../../packages/core/dist/bin.js sdk src/app.module.ts --out dist/client.ts",
     "doctor": "node ../../packages/core/dist/bin.js doctor --verify-app",
     "typecheck": "tsc --noEmit"
   },

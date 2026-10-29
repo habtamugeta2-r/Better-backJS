@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-10-29T14:42:05.148Z",
+  "timestamp": "2026-10-29T16:08:03.506Z",
   "environment": {
     "nodeVersion": "v20.20.2",
     "platform": "linux x64",
     "cpuModel": "Intel(R) Xeon(R) Processor @ 2.60GHz",
     "cpuCount": 2,
-    "rssMb": 118.79,
-    "heapUsedMb": 26.01
+    "rssMb": 120.14,
+    "heapUsedMb": 26.19
   },
   "methodology": {
     "tool": "autocannon@8.0.0",
@@ -20,47 +20,47 @@
   "coldStartupMs": {
     "rawExpress": {
       "samples": [
-        4.433,
-        0.691,
-        0.301,
-        0.4,
-        0.382,
-        0.32,
-        0.247,
-        0.25,
-        0.341,
-        0.568
+        4.321,
+        0.692,
+        0.291,
+        0.305,
+        0.392,
+        0.294,
+        0.203,
+        0.294,
+        0.311,
+        0.358
       ],
-      "medianMs": 0.36
+      "medianMs": 0.31
     },
     "betterBack": {
       "samples": [
-        7.8,
-        1.571,
-        1.293,
-        1.084,
+        7.95,
+        1.546,
         1.297,
-        1.37,
-        1.012,
-        1.074,
-        1.138,
-        1.178
+        1.152,
+        1.322,
+        1.233,
+        1.032,
+        1.091,
+        1.274,
+        1.267
       ],
-      "medianMs": 1.24
+      "medianMs": 1.27
     }
   },
   "throughput": [
     {
       "name": "Raw Express 5 — Bare (no headers, no correlation ID, no timeout)",
       "runsReqPerSec": [
-        5102,
-        5159.34,
-        5802,
-        5444.67,
-        5947.34
+        5312.67,
+        5203.34,
+        6132.67,
+        5856.67,
+        5572.67
       ],
-      "medianReqPerSec": 5444.67,
-      "meanReqPerSec": 5491.07,
+      "medianReqPerSec": 5572.67,
+      "meanReqPerSec": 5615.6,
       "p50LatencyMs": 7,
       "p99LatencyMs": 22,
       "deltaVsRawExpressPct": 0
@@ -68,77 +68,77 @@
     {
       "name": "Express 5 + helmet + cors + x-request-id + json (Manual Prod Stack)",
       "runsReqPerSec": [
-        4523.67,
-        4572.67,
-        4408.34,
-        4768.67,
-        4311
+        4587.67,
+        4556.34,
+        4687,
+        4728.67,
+        4443.67
       ],
-      "medianReqPerSec": 4523.67,
-      "meanReqPerSec": 4516.87,
+      "medianReqPerSec": 4587.67,
+      "meanReqPerSec": 4600.67,
       "p50LatencyMs": 9,
-      "p99LatencyMs": 25,
-      "deltaVsRawExpressPct": -16.92
+      "p99LatencyMs": 24,
+      "deltaVsRawExpressPct": -17.68
     },
     {
       "name": "Better Back — Engine Core (DI + Routing + Correlation + RFC 7807)",
       "runsReqPerSec": [
-        5207.34,
-        5174,
-        5147.34,
-        5214,
-        5527.34
+        5468.67,
+        5735.34,
+        5512.67,
+        5552.67,
+        5318
       ],
-      "medianReqPerSec": 5207.34,
-      "meanReqPerSec": 5254,
-      "p50LatencyMs": 8,
-      "p99LatencyMs": 22,
-      "deltaVsRawExpressPct": -4.36
+      "medianReqPerSec": 5512.67,
+      "meanReqPerSec": 5517.47,
+      "p50LatencyMs": 7,
+      "p99LatencyMs": 20,
+      "deltaVsRawExpressPct": -1.08
     },
     {
       "name": "Better Back — Secure-by-Default (+7 OWASP Headers + CORS + 30s Timeout)",
       "runsReqPerSec": [
-        4836.67,
-        5136.67,
-        4626.34,
-        5118,
-        5331.34
+        4879.34,
+        5196.67,
+        5020.67,
+        4847.34,
+        5359.34
       ],
-      "medianReqPerSec": 5118,
-      "meanReqPerSec": 5009.8,
+      "medianReqPerSec": 5020.67,
+      "meanReqPerSec": 5060.67,
       "p50LatencyMs": 8,
-      "p99LatencyMs": 23,
-      "deltaVsRawExpressPct": -6
+      "p99LatencyMs": 24,
+      "deltaVsRawExpressPct": -9.91
     },
     {
       "name": "Better Back — Full Observability (+Pino JSON Request Logs)",
       "runsReqPerSec": [
-        3909,
-        3893.67,
-        3783.34,
-        3890.34,
-        3361
+        4044.34,
+        3858.67,
+        4334,
+        4047,
+        4326
       ],
-      "medianReqPerSec": 3890.34,
-      "meanReqPerSec": 3767.47,
+      "medianReqPerSec": 4047,
+      "meanReqPerSec": 4122,
       "p50LatencyMs": 11,
-      "p99LatencyMs": 30,
-      "deltaVsRawExpressPct": -28.55
+      "p99LatencyMs": 25,
+      "deltaVsRawExpressPct": -27.38
     },
     {
       "name": "Better Back — Validated POST /users (Body Parse + Zod v4 In/Out)",
       "runsReqPerSec": [
-        3715.67,
-        3685,
-        3771,
-        3485,
-        3807
+        3688,
+        3854.34,
+        3663.67,
+        4088.34,
+        3367
       ],
-      "medianReqPerSec": 3715.67,
-      "meanReqPerSec": 3692.73,
+      "medianReqPerSec": 3688,
+      "meanReqPerSec": 3732.27,
       "p50LatencyMs": 11,
-      "p99LatencyMs": 27,
-      "deltaVsRawExpressPct": -31.76
+      "p99LatencyMs": 29,
+      "deltaVsRawExpressPct": -33.82
     }
   ]
 }

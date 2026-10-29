@@ -232,13 +232,59 @@ export const docs: DocPage[] = [
         code: 'npx bb g resource orders\nnpx bb g repository audit-logs\nnpx bb g guard api-key',
       },
       {
-        title: 'Inspect routes, module graphs & OpenAPI contracts',
+        title: 'Inspect routes, module graphs, OpenAPI & TypeScript SDKs',
         bullets: [
           'npx bb routes prints every registered HTTP method, path, guard state, and status code without opening a TCP port.',
-          'npx bb graph prints the explicit @Module dependency, controller, provider, and export tree.',
+          'npx bb graph prints the explicit @Module and DynamicModule dependency, controller, provider, and export tree.',
           'npx bb openapi --out openapi.json exports the OpenAPI 3.1.0 specification (or --check openapi.json in CI).',
+          'npx bb sdk --out src/sdk/client.ts generates a zero-dependency, strict-TypeScript fetch client SDK directly from your routes (or --check in CI).',
           'npx bb build --openapi compiles TypeScript and verifies the compiled DI/routing graph at build time.',
           'npx bb doctor --verify-app audits Node LTS, strict tsconfig, Stage-3 decorators, .env hygiene, and DI startup.',
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'caching-and-sse',
+    title: 'Caching, ETag & SSE',
+    description:
+      'Declarative @Cache with stale-while-revalidate, conditional RFC 9110 ETag (304 Not Modified), and typed Server-Sent Events.',
+    sections: [
+      {
+        title: 'Declarative HTTP caching & ETag',
+        paragraphs: [
+          'Decorate GET/HEAD routes or controllers with @Cache(...) to serve responses from CachePort (LRU InMemoryCache by default, or Redis/Valkey in multi-node clusters) with automatic weak ETag, If-None-Match 304 Not Modified, Cache-Control, X-Cache, and optional stale-while-revalidate.',
+        ],
+        code: "import { Cache, CacheToken, Controller, Get, inject, Post } from 'better-back';\n\n@Controller('/catalog')\nexport class CatalogController {\n  private readonly cache = inject(CacheToken);\n\n  @Get('/featured')\n  @Cache({ ttlMs: 30_000, swrMs: 60_000 })\n  featured() {\n    return { items: ['ts-handbook'] };\n  }\n\n  @Post('/invalidate')\n  async invalidate() {\n    await this.cache.delByPrefix?.('http:GET:/catalog');\n    return { ok: true };\n  }\n}",
+      },
+      {
+        title: 'Typed Server-Sent Events (sse)',
+        paragraphs: [
+          'Stream AI tokens, job progress, or live events over text/event-stream using sse(). Payloads validate against your route schema, document automatically in OpenAPI 3.1, and abort cleanly when clients disconnect or when app.close() drains.',
+        ],
+        code: "import { Controller, Get, sse } from 'better-back';\nimport { z } from 'zod';\n\nconst ProgressEvent = z.object({ step: z.number(), status: z.string() }).meta({ id: 'ProgressEvent' });\n\n@Controller('/jobs')\nexport class JobsController {\n  @Get('/stream', { sse: ProgressEvent })\n  stream() {\n    return sse(async function* ({ signal }) {\n      yield { id: '1', event: 'progress', data: { step: 1, status: 'running' } };\n    });\n  }\n}",
+      },
+    ],
+  },
+  {
+    slug: 'observability',
+    title: 'Metrics & tracing',
+    description:
+      'Built-in W3C traceparent propagation, OpenMetrics / Prometheus /metrics endpoint, and vendor-agnostic MetricsToken.',
+    sections: [
+      {
+        title: 'Enable /metrics and custom counters',
+        paragraphs: [
+          'Turn on metrics: { enabled: true } in BetterBack.create(...) to expose RED request metrics (requests total, errors, latency histogram buckets, and in-flight gauge) in both Prometheus text and JSON formats with zero extra dependencies.',
+        ],
+        code: "const app = await BetterBack.create(AppModule, {\n  metrics: { enabled: true, path: '/metrics' },\n});",
+      },
+      {
+        title: 'W3C Trace Context (traceparent)',
+        bullets: [
+          'Incoming W3C traceparent headers (00-<traceId>-<spanId>-<flags>) are validated automatically.',
+          'Ctx.traceId exposes the 32-hex trace identifier directly in handlers and guards.',
+          'Structured Pino child loggers (ctx.log) automatically attach both requestId and traceId.',
         ],
       },
     ],
@@ -252,8 +298,10 @@ export const docNavigation = [
   { label: 'Dependency injection', slug: 'dependency-injection' },
   { label: 'Configuration', slug: 'configuration' },
   { label: 'Security & errors', slug: 'security-errors' },
+  { label: 'Caching, ETag & SSE', slug: 'caching-and-sse' },
+  { label: 'Metrics & tracing', slug: 'observability' },
   { label: 'Testing', slug: 'testing' },
-  { label: 'CLI & scaffolding', slug: 'cli' },
+  { label: 'CLI & SDK codegen', slug: 'cli' },
 ];
 
 export function getDoc(slug: string): DocPage | undefined {

@@ -39,6 +39,11 @@ export function buildUserApiOptions(
   return {
     config,
     apiPrefix: '/api/v1',
+    etag: true,
+    metrics: {
+      enabled: true,
+      path: '/metrics',
+    },
     security: {
       headers: {
         frameOptions: config.values.ALLOW_FRAME_EMBED ? false : 'DENY',
@@ -78,11 +83,12 @@ export function buildUserApiOptions(
         }
         res.status(200).json({
           service: 'Better Back User & Posts API',
-          version: '1.0.0',
+          version: '1.1.0',
           docs: '/docs',
           openapi: '/docs/openapi.json',
           health: '/health',
           ready: '/ready',
+          metrics: '/metrics',
         });
       });
 
@@ -93,9 +99,9 @@ export function buildUserApiOptions(
     },
     openapi: {
       title: 'Better Back User & Posts API',
-      version: '1.0.0',
+      version: '1.1.0',
       description:
-        'Reference consumer API built exclusively with the unified decorator-based better-back package (Bearer token in dev: dev-secret-token-2026).',
+        'Reference consumer API built exclusively with the unified decorator-based better-back v1.1 package (Bearer token in dev: dev-secret-token-2026).',
     },
   };
 }

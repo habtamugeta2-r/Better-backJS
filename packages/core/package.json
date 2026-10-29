@@ -1,6 +1,6 @@
 {
   "name": "better-back",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "TypeScript-first, opinionated, Express-transparent backend framework with zero reflection magic",
   "type": "module",
   "license": "Apache-2.0",

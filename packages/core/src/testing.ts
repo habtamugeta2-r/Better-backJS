@@ -3,6 +3,7 @@ import { BetterBack, type BetterBackApp, type BetterBackOptions } from './applic
 import { Container } from './di/container.js';
 import type { ConcreteConstructor, Token } from './di/tokens.js';
 import { createLogger } from './logging/logger.js';
+import type { ModuleImport } from './routing/types.js';
 
 export type ProviderOverrideTuple<T = unknown> = readonly [
   token: Token<T>,
@@ -25,7 +26,7 @@ export interface CreateTestingAppOptions<TConfig = Record<string, unknown>> exte
  * with one-line DI mock overrides and zero signal-handler side effects.
  */
 export async function createTestingApp<TConfig = Record<string, unknown>>(
-  rootModuleOrController: ConcreteConstructor,
+  rootModuleOrController: ModuleImport,
   options: CreateTestingAppOptions<TConfig> = {},
 ): Promise<BetterBackApp<TConfig>> {
   return BetterBack.create(rootModuleOrController, {

@@ -158,6 +158,24 @@ describe('User & Posts API — End-to-End HTTP Integration, Express Interop, WAL
       hasPrevPage: false,
     });
 
+    // 5b. Conditional ETag -> 304 Not Modified + Live SSE Stream + /metrics
+    const listEtag = listPage1.headers['etag'] as string;
+    expect(listEtag).toMatch(/^W\/"/);
+    const listNotModified = await request(app.express)
+      .get('/api/v1/users?page=1&limit=1&order=asc')
+      .set('If-None-Match', listEtag);
+    expect(listNotModified.status).toBe(304);
+
+    const sseRes = await request(app.express).get('/api/v1/users/events');
+    expect(sseRes.status).toBe(200);
+    expect(sseRes.headers['content-type']).toContain('text/event-stream');
+    expect(sseRes.text).toContain('event: users.snapshot');
+    expect(sseRes.text).toContain('"totalUsers":2');
+
+    const metricsRes = await request(app.express).get('/metrics');
+    expect(metricsRes.status).toBe(200);
+    expect(metricsRes.text).toContain('http_requests_total');
+
     // 6. Update user
     const patchRes = await request(app.express)
       .patch(`/api/v1/users/${graceId}`)

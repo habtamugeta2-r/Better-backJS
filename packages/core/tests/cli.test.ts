@@ -138,12 +138,13 @@ export class AppModule {}
   it('prints CLI version and help text cleanly', async () => {
     const vCap = createBufferIo();
     expect(await runCli(['--version'], vCap.io)).toBe(0);
-    expect(vCap.out.join('\n')).toBe('1.0.0');
+    expect(vCap.out.join('\n')).toBe('1.1.0');
 
     const hCap = createBufferIo();
     expect(await runCli(['--help'], hCap.io)).toBe(0);
     expect(hCap.out.join('\n')).toContain('Better Back CLI');
     expect(hCap.out.join('\n')).toContain('graph [entry]');
+    expect(hCap.out.join('\n')).toContain('sdk [entry]');
     expect(hCap.out.join('\n')).toContain('build');
   });
 
@@ -218,7 +219,18 @@ export class AppModule {}
     expect(graphTreeCap.out.join('\n')).toContain('@Module AppModule');
     expect(graphTreeCap.out.join('\n')).toContain('BlogPostsModule');
 
-    // 4. Strict TypeScript typechecking (`tsc --noEmit`) across src + generated tests
+    // 3b. Generate end-to-end TypeScript Client SDK (`bb sdk`) BEFORE tsc --noEmit so tsc verifies strict SDK types too!
+    const sdkCap = createBufferIo();
+    expect(await runCli(['sdk', '--out', 'src/sdk/client.ts'], sdkCap.io, projectDir)).toBe(0);
+    expect(sdkCap.out.join('\n')).toContain('Wrote strict TypeScript Client SDK');
+
+    const sdkCheckPassCap = createBufferIo();
+    expect(
+      await runCli(['sdk', '--check', 'src/sdk/client.ts'], sdkCheckPassCap.io, projectDir),
+    ).toBe(0);
+    expect(sdkCheckPassCap.out.join('\n')).toContain('TypeScript Client SDK check passed');
+
+    // 4. Strict TypeScript typechecking (`tsc --noEmit`) across src (including generated SDK!) + generated tests
     execFileSync(tscBin, ['-p', path.join(projectDir, 'tsconfig.json'), '--noEmit'], {
       cwd: projectDir,
       stdio: 'pipe',
@@ -296,13 +308,48 @@ export class AppModule {}
     const listPosts = await request(liveApp.express).get('/api/v1/blog-posts');
     expect(listPosts.status).toBe(200);
     expect(listPosts.body.meta.total).toBe(1);
+
+    // 9. Boot on ephemeral TCP port and execute the compiled generated TypeScript Client SDK end-to-end!
+    await liveApp.listen(0, '127.0.0.1');
+    const sdkModule = (await import(
+      pathToFileURL(path.join(projectDir, 'dist/sdk/client.js')).href
+    )) as {
+      createApiClient: (opts: { baseUrl: string; token?: string }) => {
+        blogPosts: {
+          create: (args: { body: { name: string } }) => Promise<{ id: string; name: string }>;
+          list: () => Promise<{ data: readonly { id: string; name: string }[] }>;
+          getById: (args: { params: { id: string } }) => Promise<{ id: string; name: string }>;
+        };
+      };
+      BetterBackClientError: new (...args: never[]) => Error & {
+        status: number;
+        problem?: { code: string };
+      };
+    };
+
+    const apiClient = sdkModule.createApiClient({
+      baseUrl: liveApp.getUrl(),
+      token: 'dev-secret-token-2026',
+    });
+    const sdkCreated = await apiClient.blogPosts.create({ body: { name: 'From Generated SDK' } });
+    expect(sdkCreated.name).toBe('From Generated SDK');
+
+    const sdkListed = await apiClient.blogPosts.list();
+    expect(sdkListed.data.length).toBe(2);
+
+    await expect(
+      apiClient.blogPosts.getById({ params: { id: '550e8400-e29b-41d4-a716-446655440999' } }),
+    ).rejects.toMatchObject({
+      status: 404,
+      problem: { code: 'NOT_FOUND' },
+    });
   }, 30_000);
 
   it('inspects examples/user-api directly from its TypeScript source path and reports clean CLI errors on unknown commands', async () => {
     const userApiDir = path.join(repoRoot, 'examples/user-api');
     const routesCap = createBufferIo();
     expect(await runCli(['routes', 'src/app.module.ts'], routesCap.io, userApiDir)).toBe(0);
-    expect(routesCap.out.join('\n')).toContain('Total registered operations: 12');
+    expect(routesCap.out.join('\n')).toContain('Total registered operations: 14');
 
     const graphCap = createBufferIo();
     expect(await runCli(['graph', 'src/app.module.ts'], graphCap.io, userApiDir)).toBe(0);

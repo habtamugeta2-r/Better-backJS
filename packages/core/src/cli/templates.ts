@@ -2,7 +2,7 @@ import type { EntityNames } from './naming.js';
 
 export function renderProjectPackageJson(
   projectSlug: string,
-  coreVersionSpecifier = '^1.0.0',
+  coreVersionSpecifier = '^1.1.0',
 ): string {
   return `${JSON.stringify(
     {
@@ -22,6 +22,7 @@ export function renderProjectPackageJson(
         routes: 'better-back routes src/app.module.ts',
         graph: 'better-back graph src/app.module.ts',
         openapi: 'better-back openapi src/app.module.ts --out openapi.json',
+        sdk: 'better-back sdk src/app.module.ts --out src/sdk/client.ts',
         doctor: 'better-back doctor',
       },
       dependencies: {

@@ -1,4 +1,8 @@
-import type { z } from 'zod';
+import {
+  isStandardSchema,
+  type InferSchemaOutput,
+  type StandardSchemaV1,
+} from '../common/standard-schema.js';
 import { TOKEN_BRAND, type InjectionToken } from '../di/tokens.js';
 import { ConfigValidationError } from '../errors/startup-errors.js';
 
@@ -9,7 +13,7 @@ export const CONFIG_BRAND: unique symbol = Symbol.for('better-back.loaded-config
 const SECRET_NAME_PATTERN =
   /(secret|password|passwd|token|api[_-]?key|private[_-]?key|database[_-]?url|jwt|credential)/i;
 
-export interface DefineConfigOptions<TSchema extends z.ZodType> {
+export interface DefineConfigOptions<TSchema extends StandardSchemaV1> {
   readonly schema: TSchema;
   /** Optional display name for DI diagnostics (default: `"AppConfig"`). */
   readonly name?: string;
@@ -71,13 +75,19 @@ function sanitizeIssueMessage(message: string, rawSecretValue: unknown): string 
   return message;
 }
 
-function isZodSchema(value: unknown): value is z.ZodType {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'safeParse' in value &&
-    typeof (value as { safeParse?: unknown }).safeParse === 'function'
+function formatIssuePath(
+  path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined,
+): { readonly pathStr: string; readonly topKey: string } {
+  if (!path || path.length === 0) {
+    return { pathStr: '', topKey: '' };
+  }
+  const parts = path.map((seg) =>
+    typeof seg === 'object' && seg !== null && 'key' in seg ? String(seg.key) : String(seg),
   );
+  return {
+    pathStr: parts.join('.'),
+    topKey: parts[0] ?? '',
+  };
 }
 
 interface ValidatedSnapshot<T> {
@@ -86,9 +96,9 @@ interface ValidatedSnapshot<T> {
   readonly secretKeys: readonly string[];
 }
 
-function evaluateConfig<TSchema extends z.ZodType>(
+function evaluateConfig<TSchema extends StandardSchemaV1>(
   options: DefineConfigOptions<TSchema>,
-): ValidatedSnapshot<z.output<TSchema>> {
+): ValidatedSnapshot<InferSchemaOutput<TSchema>> {
   const sourceEnv = options.env ?? process.env;
   const profile = detectProfile(sourceEnv);
   const profileDefaults = options.profiles?.[profile] ?? {};
@@ -107,11 +117,22 @@ function evaluateConfig<TSchema extends z.ZodType>(
     }
   }
 
-  const parsed = options.schema.safeParse(mergedInput);
-  if (!parsed.success) {
-    const issues = parsed.error.issues.map((issue) => {
-      const pathStr = issue.path.map(String).join('.');
-      const topKey = issue.path[0] !== undefined ? String(issue.path[0]) : '';
+  const result = options.schema['~standard'].validate(mergedInput);
+  if (
+    result instanceof Promise ||
+    (typeof result === 'object' && result !== null && 'then' in result)
+  ) {
+    throw new ConfigValidationError([
+      {
+        path: '',
+        message: 'defineConfig(...) requires a synchronous Standard Schema v1 validator.',
+      },
+    ]);
+  }
+
+  if (result.issues) {
+    const issues = result.issues.map((issue) => {
+      const { pathStr, topKey } = formatIssuePath(issue.path);
       const isSecret = secretKeySet.has(topKey) || SECRET_NAME_PATTERN.test(pathStr);
       const safeMsg = isSecret
         ? `${sanitizeIssueMessage(issue.message, mergedInput[topKey])} (value: [REDACTED])`
@@ -124,7 +145,7 @@ function evaluateConfig<TSchema extends z.ZodType>(
     throw new ConfigValidationError(issues);
   }
 
-  const frozenValues = deepFreeze(parsed.data);
+  const frozenValues = deepFreeze(result.value as InferSchemaOutput<TSchema>);
   if (typeof frozenValues === 'object' && frozenValues !== null) {
     for (const key of Object.keys(frozenValues as Record<string, unknown>)) {
       if (SECRET_NAME_PATTERN.test(key)) {
@@ -140,29 +161,29 @@ function evaluateConfig<TSchema extends z.ZodType>(
   };
 }
 
-function buildLoadedConfig<TSchema extends z.ZodType>(
+function buildLoadedConfig<TSchema extends StandardSchemaV1>(
   options: DefineConfigOptions<TSchema>,
   tokenId: symbol,
   eager: boolean,
-): LoadedConfig<z.output<TSchema>> {
+): LoadedConfig<InferSchemaOutput<TSchema>> {
   const description = options.name ?? 'AppConfig';
-  let cachedSnapshot: ValidatedSnapshot<z.output<TSchema>> | undefined = eager
+  let cachedSnapshot: ValidatedSnapshot<InferSchemaOutput<TSchema>> | undefined = eager
     ? evaluateConfig(options)
     : undefined;
 
-  const ensureEvaluated = (): ValidatedSnapshot<z.output<TSchema>> => {
+  const ensureEvaluated = (): ValidatedSnapshot<InferSchemaOutput<TSchema>> => {
     if (cachedSnapshot === undefined) {
       cachedSnapshot = evaluateConfig(options);
     }
     return cachedSnapshot;
   };
 
-  const tokenObj: LoadedConfig<z.output<TSchema>> = {
+  const tokenObj: LoadedConfig<InferSchemaOutput<TSchema>> = {
     [TOKEN_BRAND]: true as const,
     [CONFIG_BRAND]: true as const,
     description,
     id: tokenId,
-    get values(): Readonly<z.output<TSchema>> {
+    get values(): Readonly<InferSchemaOutput<TSchema>> {
       return ensureEvaluated().values;
     },
     get profile(): EnvironmentProfile {
@@ -171,7 +192,7 @@ function buildLoadedConfig<TSchema extends z.ZodType>(
     get secretKeys(): readonly string[] {
       return ensureEvaluated().secretKeys;
     },
-    from(customEnv: Record<string, string | undefined>): LoadedConfig<z.output<TSchema>> {
+    from(customEnv: Record<string, string | undefined>): LoadedConfig<InferSchemaOutput<TSchema>> {
       return buildLoadedConfig({ ...options, env: customEnv }, tokenId, true);
     },
   };
@@ -180,18 +201,13 @@ function buildLoadedConfig<TSchema extends z.ZodType>(
 }
 
 /**
- * Defines startup-validated environment configuration using Zod v4, merges optional profile defaults,
- * deep-freezes the result, and redacts sensitive fields from error reports and logs.
- *
- * - Safe to import in unit tests even when `process.env` lacks required production vars: default `process.env`
- *   validation runs lazily on first `.values` access or eagerly inside `BetterBack.create()`.
- * - Passing an explicit `env` map (`defineConfig({ schema, env })` or `AppConfig.from(env)`) validates immediately.
- * - The returned `LoadedConfig<T>` is itself an `InjectionToken<Readonly<T>>` (`inject(AppConfig)`).
+ * Defines startup-validated environment configuration using Zod v4 (or any synchronous Standard Schema v1),
+ * merges optional profile defaults, deep-freezes the result, and redacts sensitive fields from error reports and logs.
  */
-export function defineConfig<TSchema extends z.ZodType>(
+export function defineConfig<TSchema extends StandardSchemaV1>(
   schemaOrOptions: TSchema | DefineConfigOptions<TSchema>,
-): LoadedConfig<z.output<TSchema>> {
-  const options: DefineConfigOptions<TSchema> = isZodSchema(schemaOrOptions)
+): LoadedConfig<InferSchemaOutput<TSchema>> {
+  const options: DefineConfigOptions<TSchema> = isStandardSchema(schemaOrOptions)
     ? { schema: schemaOrOptions }
     : schemaOrOptions;
   const description = options.name ?? 'AppConfig';

@@ -6,14 +6,17 @@ import { pathToFileURL } from 'node:url';
 import {
   BetterBack,
   formatTokenName,
+  isDynamicModule,
   isLoadedConfig,
   type BetterBackApp,
   type BetterBackOptions,
   type ConcreteConstructor,
+  type ModuleImport,
   type ModuleMetadata,
   type Token,
 } from '../index.js';
 import type { CliOutput } from './scaffolder.js';
+import { generateTypeScriptSdk, type SdkGeneratorOptions } from './sdk.js';
 
 const MODULE_META_KEY = Symbol.for('better-back.module');
 const CONTROLLER_META_KEY = Symbol.for('better-back.controller');
@@ -298,15 +301,25 @@ function describeProviderRegistration(reg: AnyModuleProvider): string {
 }
 
 function buildModuleGraphNode(
-  ctor: ConcreteConstructor,
+  input: ModuleImport,
   ancestry: ReadonlySet<ConcreteConstructor> = new Set(),
 ): ModuleGraphNode {
+  const ctor = isDynamicModule(input) ? input.module : input;
   const name = ctor.name || '<AnonymousModule>';
   if (ancestry.has(ctor)) {
     throw new Error(`Circular @Module import detected involving "${name}".`);
   }
 
-  const meta = readModuleMeta(ctor);
+  const baseMeta = readModuleMeta(ctor);
+  const meta: ModuleMetadata | undefined = isDynamicModule(input)
+    ? {
+        imports: [...(baseMeta?.imports ?? []), ...(input.imports ?? [])],
+        controllers: [...(baseMeta?.controllers ?? []), ...(input.controllers ?? [])],
+        providers: [...(baseMeta?.providers ?? []), ...(input.providers ?? [])],
+        exports: [...(baseMeta?.exports ?? []), ...(input.exports ?? [])],
+      }
+    : baseMeta;
+
   if (!meta) {
     // Standalone @Controller root
     return {
@@ -424,6 +437,50 @@ export async function exportOpenApiCommand(
   }
 
   return serialized;
+}
+
+export async function exportSdkCommand(
+  options: {
+    readonly entry?: string;
+    readonly outFile?: string;
+    readonly checkFile?: string;
+    readonly cwd: string;
+    readonly apiPrefix?: string;
+    readonly sdkOptions?: SdkGeneratorOptions;
+  },
+  io: CliOutput,
+): Promise<string> {
+  await using app = await loadInMemoryApp(options.entry, options.cwd, options.apiPrefix);
+  const generated = generateTypeScriptSdk(app.openApiDocument, options.sdkOptions);
+
+  if (options.checkFile) {
+    const absCheck = path.resolve(options.cwd, options.checkFile);
+    if (!(await fileExists(absCheck))) {
+      throw new Error(
+        `SDK contract check failed: "${absCheck}" does not exist. Generate it with "better-back sdk --out ${options.checkFile}".`,
+      );
+    }
+    const existing = await readFile(absCheck, 'utf8');
+    if (existing !== generated) {
+      throw new Error(
+        `SDK contract drift detected in "${options.checkFile}". Re-run "better-back sdk --out ${options.checkFile}" and commit the updated client.`,
+      );
+    }
+    io.stdout(`TypeScript Client SDK check passed: ${options.checkFile} is up to date.`);
+    return generated;
+  }
+
+  if (options.outFile) {
+    const absOut = path.resolve(options.cwd, options.outFile);
+    await mkdir(path.dirname(absOut), { recursive: true });
+    await writeFile(absOut, generated, 'utf8');
+    const pathCount = Object.keys(app.openApiDocument.paths).length;
+    io.stdout(`Wrote strict TypeScript Client SDK (${pathCount} OpenAPI paths) to ${absOut}`);
+  } else {
+    io.stdout(generated.trimEnd());
+  }
+
+  return generated;
 }
 
 export async function buildProjectCommand(

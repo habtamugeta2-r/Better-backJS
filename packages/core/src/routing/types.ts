@@ -1,7 +1,13 @@
 import type { Request, RequestHandler, Response } from 'express';
-import type { z } from 'zod';
+import type {
+  InferSchemaInput,
+  InferSchemaOutput,
+  StandardSchemaV1,
+} from '../common/standard-schema.js';
 import type { ConcreteConstructor, Provider, Token } from '../di/tokens.js';
 import type { Logger } from '../logging/logger.js';
+import type { RouteCachePolicy } from '../pipeline/cache.js';
+import type { SseStream } from '../pipeline/sse.js';
 import type { RateLimitPolicy } from '../ports/rate-limiter.js';
 
 export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options' | 'head';
@@ -39,13 +45,18 @@ export type DeepReadonly<T> = T extends (...args: never) => unknown
       : T;
 
 export type InferSchemaOr<
-  TSchema extends z.ZodType | undefined,
+  TSchema extends StandardSchemaV1 | undefined,
   TFallback,
-> = TSchema extends z.ZodType ? z.output<TSchema> : TFallback;
+> = TSchema extends StandardSchemaV1 ? InferSchemaOutput<TSchema> : TFallback;
 
-export type InferResponseOutput<TSchema extends z.ZodType | undefined> = TSchema extends z.ZodType
-  ? DeepReadonly<z.input<TSchema>> | DeepReadonly<z.output<TSchema>>
-  : unknown;
+export type InferResponseOutput<
+  TRes extends StandardSchemaV1 | undefined,
+  TSse extends StandardSchemaV1 | undefined = undefined,
+> = TSse extends StandardSchemaV1
+  ? SseStream<InferSchemaInput<TSse> | InferSchemaOutput<TSse>>
+  : TRes extends StandardSchemaV1
+    ? DeepReadonly<InferSchemaInput<TRes>> | DeepReadonly<InferSchemaOutput<TRes>>
+    : unknown;
 
 /**
  * Context passed into an `AuthGuard` before route schema validation or handler execution.
@@ -55,6 +66,7 @@ export interface GuardContext<TUser = unknown> {
   readonly req: Request;
   readonly res: Response;
   readonly requestId: string;
+  readonly traceId?: string | undefined;
   readonly signal: AbortSignal;
   readonly log: Logger;
   readonly user: TUser;
@@ -106,6 +118,7 @@ export interface GuardProbeContext<TGuardUser> {
   readonly headers: never;
   readonly user: TGuardUser;
   readonly requestId: string;
+  readonly traceId: string | undefined;
   readonly signal: AbortSignal;
   readonly log: Logger;
   readonly req: Request;
@@ -114,14 +127,15 @@ export interface GuardProbeContext<TGuardUser> {
 
 /**
  * Single-Source-of-Truth Route Options passed to `@Get`, `@Post`, `@Put`, `@Patch`, or `@Delete`.
- * Drives runtime Zod validation, static TypeScript verification, and OpenAPI 3.1 docs.
+ * Drives runtime Zod v4 / Standard Schema v1 validation, static TypeScript verification, and OpenAPI 3.1 docs.
  */
 export interface RouteOptions<
-  TBody extends z.ZodType | undefined = undefined,
-  TQuery extends z.ZodType | undefined = undefined,
-  TParams extends z.ZodType | undefined = undefined,
-  THeaders extends z.ZodType | undefined = undefined,
-  TRes extends z.ZodType | undefined = undefined,
+  TBody extends StandardSchemaV1 | undefined = undefined,
+  TQuery extends StandardSchemaV1 | undefined = undefined,
+  TParams extends StandardSchemaV1 | undefined = undefined,
+  THeaders extends StandardSchemaV1 | undefined = undefined,
+  TRes extends StandardSchemaV1 | undefined = undefined,
+  TSse extends StandardSchemaV1 | undefined = undefined,
 > {
   readonly summary?: string;
   readonly description?: string;
@@ -132,12 +146,18 @@ export interface RouteOptions<
   readonly params?: TParams;
   readonly headers?: THeaders;
   readonly response?: TRes;
+  /** Schema for Server-Sent Events (`text/event-stream`) yielded via `sse(...)`. */
+  readonly sse?: TSse;
   /** Document expected RFC 7807 `ProblemDetails` error status codes in OpenAPI 3.1 (e.g. `[404, 409]`). */
   readonly errors?: readonly DocumentedErrorStatus[];
-  /** Validate and strip handler return value through `response` schema at runtime (default: `true` when `response` is provided). */
+  /** Validate and strip handler return value through `response` / `sse` schema at runtime (default: `true`). */
   readonly validateResponse?: boolean;
   readonly timeoutMs?: number;
   readonly rateLimit?: RateLimitPolicy;
+  /** Declarative HTTP response cache policy (`GET`/`HEAD`) backed by `CachePort` (`CacheToken`). */
+  readonly cache?: RouteCachePolicy;
+  /** Emit RFC 9110 weak `ETag` and respond `304 Not Modified` when `If-None-Match` matches. */
+  readonly etag?: boolean;
 }
 
 /**
@@ -145,10 +165,10 @@ export interface RouteOptions<
  */
 export interface RouteContext<
   Path extends string = string,
-  TBody extends z.ZodType | undefined = undefined,
-  TQuery extends z.ZodType | undefined = undefined,
-  TParams extends z.ZodType | undefined = undefined,
-  THeaders extends z.ZodType | undefined = undefined,
+  TBody extends StandardSchemaV1 | undefined = undefined,
+  TQuery extends StandardSchemaV1 | undefined = undefined,
+  TParams extends StandardSchemaV1 | undefined = undefined,
+  THeaders extends StandardSchemaV1 | undefined = undefined,
   TUser = unknown,
 > {
   readonly params: InferSchemaOr<TParams, PathParams<Path>>;
@@ -157,6 +177,7 @@ export interface RouteContext<
   readonly headers: InferSchemaOr<THeaders, Record<string, string | readonly string[] | undefined>>;
   readonly user: TUser;
   readonly requestId: string;
+  readonly traceId: string | undefined;
   readonly signal: AbortSignal;
   readonly log: Logger;
   readonly req: Request;
@@ -167,36 +188,36 @@ export interface RouteContext<
  * Structured specification object accepted by `Ctx<{ ... }>`.
  */
 export interface CtxSpec {
-  readonly params?: z.ZodType | string;
-  readonly query?: z.ZodType;
-  readonly body?: z.ZodType;
-  readonly headers?: z.ZodType;
+  readonly params?: StandardSchemaV1 | string;
+  readonly query?: StandardSchemaV1;
+  readonly body?: StandardSchemaV1;
+  readonly headers?: StandardSchemaV1;
   readonly user?: unknown;
 }
 
 /**
  * Minimal, ergonomic route context type for `@Controller` methods:
  *
- * - `Ctx` -> untyped route context (`req`, `res`, `log`, `requestId`, `signal`)
+ * - `Ctx` -> untyped route context (`req`, `res`, `log`, `requestId`, `traceId`, `signal`)
  * - `Ctx<'/:id'>` -> infers `params: { readonly id: string }`
- * - `Ctx<typeof CreateUserSchema>` -> infers `body: z.output<typeof CreateUserSchema>`
+ * - `Ctx<typeof CreateUserSchema>` -> infers `body: InferSchemaOutput<typeof CreateUserSchema>`
  * - `Ctx<{ params: typeof IdParams; body: typeof UpdateSchema; user: AuthUser }>` -> full structured inference
  */
-export type Ctx<TSpec extends z.ZodType | string | CtxSpec | undefined = undefined> = [
+export type Ctx<TSpec extends StandardSchemaV1 | string | CtxSpec | undefined = undefined> = [
   TSpec,
 ] extends [undefined]
   ? RouteContext<string, undefined, undefined, undefined, undefined, unknown>
   : TSpec extends string
     ? RouteContext<TSpec, undefined, undefined, undefined, undefined, unknown>
-    : TSpec extends z.ZodType
+    : TSpec extends StandardSchemaV1
       ? RouteContext<string, TSpec, undefined, undefined, undefined, unknown>
       : TSpec extends CtxSpec
         ? RouteContext<
             TSpec['params'] extends string ? TSpec['params'] : string,
-            TSpec['body'] extends z.ZodType ? TSpec['body'] : undefined,
-            TSpec['query'] extends z.ZodType ? TSpec['query'] : undefined,
-            TSpec['params'] extends z.ZodType ? TSpec['params'] : undefined,
-            TSpec['headers'] extends z.ZodType ? TSpec['headers'] : undefined,
+            TSpec['body'] extends StandardSchemaV1 ? TSpec['body'] : undefined,
+            TSpec['query'] extends StandardSchemaV1 ? TSpec['query'] : undefined,
+            TSpec['params'] extends StandardSchemaV1 ? TSpec['params'] : undefined,
+            TSpec['headers'] extends StandardSchemaV1 ? TSpec['headers'] : undefined,
             'user' extends keyof TSpec ? TSpec['user'] : unknown
           >
         : never;
@@ -207,12 +228,14 @@ export interface RouteDefinition {
   readonly handlerName: string;
   readonly takesContext: boolean;
   readonly options: RouteOptions<
-    z.ZodType | undefined,
-    z.ZodType | undefined,
-    z.ZodType | undefined,
-    z.ZodType | undefined,
-    z.ZodType | undefined
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
   >;
+  readonly cachePolicy: RouteCachePolicy | undefined;
   readonly guards: readonly AuthGuardInput<unknown, never>[];
   readonly isPublic: boolean;
   readonly middlewares: readonly RequestHandler[];
@@ -225,10 +248,20 @@ export interface ControllerOptions<Prefix extends string = string> {
   readonly tags?: readonly string[];
 }
 
+export type ModuleImport = ConcreteConstructor | DynamicModule;
+
 export interface ModuleMetadata {
-  readonly imports?: readonly ConcreteConstructor[];
+  readonly imports?: readonly ModuleImport[];
   readonly controllers?: readonly ConcreteConstructor[];
   readonly providers?: readonly Provider[];
   readonly exports?: readonly Token[];
   readonly global?: boolean;
+}
+
+/**
+ * Configurable explicit module descriptor (`MyModule.register(options): DynamicModule`)
+ * with zero reflection magic.
+ */
+export interface DynamicModule extends ModuleMetadata {
+  readonly module: ConcreteConstructor;
 }

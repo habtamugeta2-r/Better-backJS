@@ -1,5 +1,16 @@
 import type { RequestHandler } from 'express';
-import { Controller, Delete, Get, Guard, inject, Patch, Post, Use, type Ctx } from 'better-back';
+import {
+  Controller,
+  Delete,
+  Get,
+  Guard,
+  inject,
+  Patch,
+  Post,
+  sse,
+  Use,
+  type Ctx,
+} from 'better-back';
 import { BearerAuthGuard, requireScope, type AuthUser } from '../../common/auth.guard.js';
 import {
   CreateUserSchema,
@@ -8,6 +19,7 @@ import {
   UpdateUserSchema,
   UserIdParamsSchema,
   UserSchema,
+  UserStreamSnapshotEventSchema,
 } from './users.schema.js';
 import { UsersService } from './users.service.js';
 
@@ -29,6 +41,28 @@ export class UsersController {
   })
   public list({ query }: Ctx<{ query: typeof ListUsersQuerySchema }>) {
     return this.usersService.listUsers(query);
+  }
+
+  @Get('/events', {
+    summary: 'Stream live user directory snapshot via Server-Sent Events (SSE)',
+    sse: UserStreamSnapshotEventSchema,
+  })
+  public streamEvents() {
+    const usersService = this.usersService;
+    return sse(
+      async function* () {
+        const snapshot = await usersService.listUsers({ page: 1, limit: 1, order: 'desc' });
+        yield {
+          id: 'snapshot-1',
+          event: 'users.snapshot',
+          data: {
+            totalUsers: snapshot.meta.total,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      },
+      { heartbeatMs: 0, retryMs: 3000 },
+    );
   }
 
   @Get('/:id', {

@@ -51,7 +51,8 @@ export default function Home() {
       <section className="hero">
         <div className="hero-copy">
           <div className="eyebrow">
-            <span className="eyebrow-line" /> A BETTER FOUNDATION FOR YOUR API
+            <span className="eyebrow-line" /> BETTER BACK v1.1 · EXPRESS 5 + STAGE-3 + STANDARD
+            SCHEMA
           </div>
           <h1>
             Backend clarity.

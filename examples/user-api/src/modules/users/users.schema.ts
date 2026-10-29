@@ -63,3 +63,13 @@ export const PaginatedUsersResponseSchema = createPaginatedResponseSchema(UserSc
   id: 'PaginatedUsersResponse',
   title: 'PaginatedUsersResponse',
 });
+
+export const UserStreamSnapshotEventSchema = z
+  .object({
+    totalUsers: z.number().int().min(0),
+    timestamp: z.iso.datetime(),
+  })
+  .meta({
+    id: 'UserStreamSnapshotEvent',
+    title: 'UserStreamSnapshotEvent',
+  });

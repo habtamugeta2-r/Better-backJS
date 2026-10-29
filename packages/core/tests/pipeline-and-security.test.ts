@@ -373,11 +373,16 @@ describe('Pipeline, Composable Guards, Proxy-Safe Rate Limits, OpenAPI 3.1 & Shu
 
   it('drains in-flight requests cleanly on graceful close()', async () => {
     let finishedSlowHandler = false;
+    let markEntered!: () => void;
+    const enteredHandler = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
 
     @Controller('/work')
     class DrainController {
       @Get('/')
       public async run() {
+        markEntered();
         await new Promise((resolve) => setTimeout(resolve, 60));
         finishedSlowHandler = true;
         return { completed: true };
@@ -392,7 +397,7 @@ describe('Pipeline, Composable Guards, Proxy-Safe Rate Limits, OpenAPI 3.1 & Shu
     const baseUrl = app.getUrl();
 
     const inFlightFetch = fetch(`${baseUrl}/work`);
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await enteredHandler;
 
     const closeTask = app.close('SIGTERM');
     const response = await inFlightFetch;

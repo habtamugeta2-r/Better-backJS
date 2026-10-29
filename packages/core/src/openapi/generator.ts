@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../common/standard-schema.js';
+import type { RouteCachePolicy } from '../pipeline/cache.js';
 import type { DocumentedErrorStatus, HttpMethod, RouteOptions } from '../routing/types.js';
 import { toOpenApiPath } from '../routing/versioning.js';
 
@@ -9,13 +11,21 @@ export interface RegisteredRouteMeta {
   readonly handlerName: string;
   readonly tags: readonly string[];
   readonly requiresAuth: boolean;
+  readonly cachePolicy?: RouteCachePolicy | undefined;
+  readonly etagEnabled?: boolean | undefined;
   readonly options: RouteOptions<
-    z.ZodType | undefined,
-    z.ZodType | undefined,
-    z.ZodType | undefined,
-    z.ZodType | undefined,
-    z.ZodType | undefined
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
   >;
+}
+
+export interface OpenApiServer {
+  readonly url: string;
+  readonly description?: string;
 }
 
 export interface OpenApiOptions {
@@ -25,7 +35,9 @@ export interface OpenApiOptions {
   readonly title?: string;
   readonly version?: string;
   readonly description?: string;
+  readonly servers?: readonly OpenApiServer[];
   readonly includeSystemRoutes?: boolean;
+  readonly metricsPath?: string;
 }
 
 export interface OpenApiDocument {
@@ -36,6 +48,7 @@ export interface OpenApiDocument {
     readonly version: string;
     readonly description?: string;
   };
+  readonly servers?: readonly OpenApiServer[];
   readonly tags: readonly { readonly name: string }[];
   readonly paths: Record<string, Record<string, unknown>>;
   readonly components: {
@@ -59,6 +72,10 @@ const ERROR_STATUS_DESCRIPTIONS: Record<DocumentedErrorStatus, string> = {
   503: 'Service Unavailable (RFC 7807 Problem Details)',
 };
 
+function isZodV4Schema(schema: StandardSchemaV1): schema is z.ZodType {
+  return typeof schema === 'object' && schema !== null && '_zod' in schema;
+}
+
 function rewriteDefsRefs(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(rewriteDefsRefs);
@@ -78,17 +95,10 @@ function rewriteDefsRefs(value: unknown): unknown {
   return value;
 }
 
-function toCleanJsonSchema(
-  schema: z.ZodType,
-  mode: 'input' | 'output',
+function ingestRawJsonSchema(
+  raw: JsonSchemaObject,
   componentSchemas: Record<string, JsonSchemaObject>,
 ): JsonSchemaObject {
-  const raw = z.toJSONSchema(schema, {
-    target: 'draft-2020-12',
-    io: mode,
-    unrepresentable: 'any',
-  }) as JsonSchemaObject;
-
   const rawDefs = raw['$defs'];
   if (typeof rawDefs === 'object' && rawDefs !== null) {
     for (const [defName, defSchema] of Object.entries(rawDefs as Record<string, unknown>)) {
@@ -99,8 +109,37 @@ function toCleanJsonSchema(
       }
     }
   }
-
   return rewriteDefsRefs(raw) as JsonSchemaObject;
+}
+
+function toCleanJsonSchema(
+  schema: StandardSchemaV1,
+  mode: 'input' | 'output',
+  componentSchemas: Record<string, JsonSchemaObject>,
+): JsonSchemaObject {
+  if (isZodV4Schema(schema)) {
+    const raw = z.toJSONSchema(schema, {
+      target: 'draft-2020-12',
+      io: mode,
+      unrepresentable: 'any',
+    }) as JsonSchemaObject;
+    return ingestRawJsonSchema(raw, componentSchemas);
+  }
+
+  const converter = schema['~standard'].jsonSchema;
+  if (converter) {
+    try {
+      const raw =
+        mode === 'input'
+          ? converter.input({ target: 'draft-2020-12' })
+          : converter.output({ target: 'draft-2020-12' });
+      return ingestRawJsonSchema(raw, componentSchemas);
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
 }
 
 function resolveComponentRef(
@@ -154,7 +193,7 @@ function extractObjectProperties(
 
 /**
  * Generates an OpenAPI 3.1.0 specification directly from Better Back's single-source-of-truth
- * Zod v4 route contracts — hoisting `.meta({ id })` schemas into `#/components/schemas`
+ * Zod v4 / Standard Schema v1 route contracts — hoisting `.meta({ id })` schemas into `#/components/schemas`
  * and making documentation drift structurally impossible.
  */
 export function generateOpenApiDocument(
@@ -248,7 +287,7 @@ export function generateOpenApiDocument(
         const description =
           typeof propSchema['description'] === 'string' ? propSchema['description'] : undefined;
         parameters.push({
-          name,
+          name: name,
           in: 'query',
           required: parsedQuery.required.has(name),
           ...(description ? { description } : {}),
@@ -273,14 +312,42 @@ export function generateOpenApiDocument(
     const defaultStatus = r.options.status ?? (r.method === 'post' ? 201 : 200);
     const statusKey = String(defaultStatus);
 
+    const responseHeaders: Record<string, unknown> = {};
+    if (r.cachePolicy && (r.method === 'get' || r.method === 'head')) {
+      responseHeaders['X-Cache'] = {
+        description: 'Cache lookup state (HIT, MISS, or STALE)',
+        schema: { type: 'string', enum: ['HIT', 'MISS', 'STALE'] },
+      };
+    }
+    if (r.etagEnabled && (r.method === 'get' || r.method === 'head')) {
+      responseHeaders['ETag'] = {
+        description: 'RFC 9110 weak entity tag',
+        schema: { type: 'string' },
+      };
+    }
+    const hasResHeaders = Object.keys(responseHeaders).length > 0;
+
     const responses: Record<string, unknown> = {};
-    if (defaultStatus === 204) {
+    if (r.options.sse) {
+      responses['200'] = {
+        description: 'Server-Sent Events (SSE) stream',
+        content: {
+          'text/event-stream': {
+            schema: toCleanJsonSchema(r.options.sse, 'output', componentSchemas),
+          },
+        },
+      };
+    } else if (defaultStatus === 204) {
       responses['204'] = { description: 'No Content' };
     } else if (r.method === 'head' && !r.options.response) {
-      responses[statusKey] = { description: 'Successful HEAD response (headers only)' };
+      responses[statusKey] = {
+        description: 'Successful HEAD response (headers only)',
+        ...(hasResHeaders ? { headers: responseHeaders } : {}),
+      };
     } else if (r.options.response) {
       responses[statusKey] = {
         description: 'Successful JSON response',
+        ...(hasResHeaders ? { headers: responseHeaders } : {}),
         content: {
           'application/json': {
             schema: toCleanJsonSchema(r.options.response, 'output', componentSchemas),
@@ -290,11 +357,18 @@ export function generateOpenApiDocument(
     } else {
       responses[statusKey] = {
         description: 'Successful JSON response',
+        ...(hasResHeaders ? { headers: responseHeaders } : {}),
         content: {
           'application/json': {
             schema: {},
           },
         },
+      };
+    }
+
+    if (r.etagEnabled && (r.method === 'get' || r.method === 'head') && defaultStatus === 200) {
+      responses['304'] = {
+        description: 'Not Modified (If-None-Match matched current ETag)',
       };
     }
 
@@ -444,6 +518,24 @@ export function generateOpenApiDocument(
         },
       };
     }
+    if (options.metricsPath && !paths[options.metricsPath]) {
+      paths[options.metricsPath] = {
+        get: {
+          operationId: 'System_metrics',
+          tags: ['System'],
+          summary: 'OpenMetrics / Prometheus & JSON telemetry endpoint',
+          responses: {
+            '200': {
+              description: 'Current process & HTTP RED metrics',
+              content: {
+                'text/plain': { schema: { type: 'string' } },
+                'application/json': { schema: { type: 'object', additionalProperties: true } },
+              },
+            },
+          },
+        },
+      };
+    }
   }
 
   return {
@@ -451,9 +543,10 @@ export function generateOpenApiDocument(
     jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
     info: {
       title: options.title ?? 'Better Back API',
-      version: options.version ?? '1.0.0',
+      version: options.version ?? '1.1.0',
       ...(options.description ? { description: options.description } : {}),
     },
+    ...(options.servers && options.servers.length > 0 ? { servers: options.servers } : {}),
     tags: [...tagSet].map((name) => ({ name })),
     paths,
     components: {

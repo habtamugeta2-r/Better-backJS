@@ -55,12 +55,12 @@ describe('Dual ESM / CJS Package Build Verification (ADR-005)', () => {
     const requireCjs = createRequire(import.meta.url);
     const cliCjs = requireCjs(cliCjsEntry) as typeof BetterBackCliPkg;
 
-    expect(cliEsm.CLI_VERSION).toBe('1.0.0');
-    expect(cliCjs.CLI_VERSION).toBe('1.0.0');
+    expect(cliEsm.CLI_VERSION).toBe('1.1.0');
+    expect(cliCjs.CLI_VERSION).toBe('1.1.0');
 
     const versionOut = execFileSync(process.execPath, [binEntry, '--version'], {
       encoding: 'utf8',
     }).trim();
-    expect(versionOut).toBe('1.0.0');
+    expect(versionOut).toBe('1.1.0');
   });
 });

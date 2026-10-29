@@ -49,6 +49,18 @@ interface InjectionFrame {
 
 let activeInjectionFrame: InjectionFrame | undefined;
 
+export interface InjectOptionalOptions {
+  readonly optional: true;
+  readonly defaultValue?: undefined;
+}
+
+export interface InjectDefaultOptions<T> {
+  readonly optional?: boolean;
+  readonly defaultValue: T;
+}
+
+export type InjectOptions<T> = InjectOptionalOptions | InjectDefaultOptions<T>;
+
 /**
  * Resolves a dependency inside an `@Injectable()` service, `@Controller()` class,
  * or `useFactory` provider with 100% static TypeScript inference and zero `reflect-metadata`:
@@ -57,16 +69,27 @@ let activeInjectionFrame: InjectionFrame | undefined;
  * @Controller('/users')
  * export class UsersController {
  *   private readonly users = inject(UsersService);
+ *   private readonly metrics = inject(MetricsToken, { optional: true });
  * }
  * ```
  */
-export function inject<T>(token: Token<T>): T {
+export function inject<T>(token: Token<T>): T;
+export function inject<T>(token: Token<T>, options: InjectDefaultOptions<T>): T;
+export function inject<T>(token: Token<T>, options: InjectOptionalOptions): T | undefined;
+export function inject<T>(token: Token<T>, options?: InjectOptions<T>): T | undefined {
   const frame = activeInjectionFrame;
   if (!frame) {
     throw new BootstrapError(
       'DI_CONTEXT_ERROR',
       `inject(${formatTokenName(token)}) can only be called during DI instantiation (inside a class field initializer, constructor, or useFactory). In unit tests, use resolveForTest(...) or Container.`,
     );
+  }
+  if (options && ('defaultValue' in options || options.optional)) {
+    const found = frame.container._resolveOptionalFromFrame(token, frame);
+    if (found !== undefined) {
+      return found;
+    }
+    return 'defaultValue' in options ? options.defaultValue : undefined;
   }
   return frame.container._resolveFromFrame(token, frame);
 }
@@ -146,6 +169,7 @@ function normalizeProvider(moduleName: string, provider: Provider): RegisteredBi
 
 export interface Resolver {
   resolve<T>(token: Token<T>, fromModule?: string): T;
+  resolveOptional?<T>(token: Token<T>, fromModule?: string): T | undefined;
 }
 
 /**
@@ -279,6 +303,25 @@ export class Container implements Resolver {
   }
 
   /**
+   * Resolves a token from root container scope, returning `undefined` if not registered/visible.
+   */
+  public resolveOptional<T>(token: Token<T>, fromModule?: string): T | undefined {
+    const key = toTokenKey(token);
+    if (this.overrides.has(key)) {
+      return this.overrides.get(key) as T;
+    }
+    try {
+      const binding = this.lookupBinding(token, fromModule, 'Container.resolveOptional');
+      return this.instantiateBinding(binding, undefined, [], new Set(), false) as T;
+    } catch (err) {
+      if (err instanceof MissingProviderError) {
+        return undefined;
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Creates a lightweight per-request resolver that caches `'request'`-scoped providers
    * for the duration of a single HTTP request while sharing root singletons.
    */
@@ -292,6 +335,21 @@ export class Container implements Resolver {
         }
         const binding = this.lookupBinding(token, fromModule, 'RequestScope.resolve');
         return this.instantiateBinding(binding, requestCache, [], new Set(), false) as T;
+      },
+      resolveOptional: <T>(token: Token<T>, fromModule?: string): T | undefined => {
+        const key = toTokenKey(token);
+        if (this.overrides.has(key)) {
+          return this.overrides.get(key) as T;
+        }
+        try {
+          const binding = this.lookupBinding(token, fromModule, 'RequestScope.resolveOptional');
+          return this.instantiateBinding(binding, requestCache, [], new Set(), false) as T;
+        } catch (err) {
+          if (err instanceof MissingProviderError) {
+            return undefined;
+          }
+          throw err;
+        }
       },
     };
   }
@@ -340,6 +398,18 @@ export class Container implements Resolver {
     }
 
     return instance as T;
+  }
+
+  /** @internal Invoked synchronously by `inject(token, { optional: true })`. */
+  public _resolveOptionalFromFrame<T>(token: Token<T>, parentFrame: InjectionFrame): T | undefined {
+    try {
+      return this._resolveFromFrame(token, parentFrame);
+    } catch (err) {
+      if (err instanceof MissingProviderError) {
+        return undefined;
+      }
+      throw err;
+    }
   }
 
   private recordOwner(key: TokenKey, moduleName: string): void {

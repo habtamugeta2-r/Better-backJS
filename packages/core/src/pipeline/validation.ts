@@ -1,14 +1,18 @@
 import type { Request } from 'express';
-import type { z } from 'zod';
+import type {
+  StandardSchemaIssue,
+  StandardSchemaResult,
+  StandardSchemaV1,
+} from '../common/standard-schema.js';
 import { InternalServerError, ValidationError, type ValidationIssue } from '../errors/app-error.js';
 import { sanitizeUntrustedObject } from './body-parser.js';
 
 export interface RouteValidationSchemas {
-  readonly params?: z.ZodType;
-  readonly query?: z.ZodType;
-  readonly headers?: z.ZodType;
-  readonly body?: z.ZodType;
-  readonly response?: z.ZodType;
+  readonly params?: StandardSchemaV1;
+  readonly query?: StandardSchemaV1;
+  readonly headers?: StandardSchemaV1;
+  readonly body?: StandardSchemaV1;
+  readonly response?: StandardSchemaV1;
 }
 
 export interface ValidatedRequestParts {
@@ -25,23 +29,14 @@ export interface CompiledRouteValidator {
   validateResponse(payload: unknown): unknown | Promise<unknown>;
 }
 
-interface StandardResult {
-  readonly value?: unknown;
-  readonly issues?: readonly {
-    readonly message: string;
-    readonly code?: string;
-    readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[];
-  }[];
-}
-
-function isPromise(value: unknown): value is Promise<StandardResult> {
+function isPromise(value: unknown): value is Promise<StandardSchemaResult<unknown>> {
   return (
     value instanceof Promise || (typeof value === 'object' && value !== null && 'then' in value)
   );
 }
 
 function formatPath(
-  path: readonly (PropertyKey | { readonly key: PropertyKey })[] | undefined,
+  path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined,
 ): string {
   if (!path || path.length === 0) return '';
   return path
@@ -53,7 +48,7 @@ function formatPath(
 
 function mapIssues(
   location: ValidationIssue['location'],
-  issues: NonNullable<StandardResult['issues']>,
+  issues: ReadonlyArray<StandardSchemaIssue>,
 ): ValidationIssue[] {
   return issues.map((issue) => ({
     location,
@@ -64,8 +59,8 @@ function mapIssues(
 }
 
 /**
- * Compiles a route's Zod v4 schemas once at startup.
- * Synchronous schemas run with zero Promise overhead; async Zod refinements (`z.refine(async ...)`)
+ * Compiles a route's Standard Schema v1 / Zod v4 contracts once at startup.
+ * Synchronous schemas run with zero Promise overhead; async schemas (`z.refine(async ...)`)
  * automatically transition to async validation.
  */
 export function compileRouteValidator(schemas: RouteValidationSchemas): CompiledRouteValidator {
@@ -93,21 +88,15 @@ export function compileRouteValidator(schemas: RouteValidationSchemas): Compiled
       }
 
       const pRes = paramsSchema
-        ? (paramsSchema['~standard'].validate(sanitizeUntrustedObject(req.params)) as
-            StandardResult | Promise<StandardResult>)
+        ? paramsSchema['~standard'].validate(sanitizeUntrustedObject(req.params))
         : undefined;
       const qRes = querySchema
-        ? (querySchema['~standard'].validate(sanitizeUntrustedObject(req.query)) as
-            StandardResult | Promise<StandardResult>)
+        ? querySchema['~standard'].validate(sanitizeUntrustedObject(req.query))
         : undefined;
       const hRes = headersSchema
-        ? (headersSchema['~standard'].validate(sanitizeUntrustedObject(req.headers)) as
-            StandardResult | Promise<StandardResult>)
+        ? headersSchema['~standard'].validate(sanitizeUntrustedObject(req.headers))
         : undefined;
-      const bRes = bodySchema
-        ? (bodySchema['~standard'].validate(req.body ?? {}) as
-            StandardResult | Promise<StandardResult>)
-        : undefined;
+      const bRes = bodySchema ? bodySchema['~standard'].validate(req.body ?? {}) : undefined;
 
       if (isPromise(pRes) || isPromise(qRes) || isPromise(hRes) || isPromise(bRes)) {
         return (async (): Promise<ValidatedRequestParts> => {
@@ -121,8 +110,7 @@ export function compileRouteValidator(schemas: RouteValidationSchemas): Compiled
 
     validateResponse(payload: unknown): unknown | Promise<unknown> {
       if (!responseSchema) return payload;
-      const res = responseSchema['~standard'].validate(payload) as
-        StandardResult | Promise<StandardResult>;
+      const res = responseSchema['~standard'].validate(payload);
       if (isPromise(res)) {
         return res.then((r) => finalizeResponse(r));
       }
@@ -133,10 +121,10 @@ export function compileRouteValidator(schemas: RouteValidationSchemas): Compiled
 
 function finalizeRequest(
   req: Request,
-  pRes: StandardResult | undefined,
-  qRes: StandardResult | undefined,
-  hRes: StandardResult | undefined,
-  bRes: StandardResult | undefined,
+  pRes: StandardSchemaResult<unknown> | undefined,
+  qRes: StandardSchemaResult<unknown> | undefined,
+  hRes: StandardSchemaResult<unknown> | undefined,
+  bRes: StandardSchemaResult<unknown> | undefined,
 ): ValidatedRequestParts {
   const issues: ValidationIssue[] = [];
   let paramsOut: unknown = req.params;
@@ -173,7 +161,7 @@ function finalizeRequest(
   };
 }
 
-function finalizeResponse(res: StandardResult): unknown {
+function finalizeResponse(res: StandardSchemaResult<unknown>): unknown {
   if (res.issues) {
     throw new InternalServerError(
       'Response payload failed contract validation.',
